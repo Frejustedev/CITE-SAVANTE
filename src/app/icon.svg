@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Icône provisoire du site (en attendant le logo) : le bâtiment à colonnes
+       des pictogrammes (traceBatimentColonnes), crème sur bordeaux. Les
+       couleurs sont écrites en clair car une icône ne lit pas les variables CSS :
+       bordeaux #6B1E2E, crème #F7F1E3 (charte, section 4.1). -->
+  <rect width="32" height="32" rx="6" fill="#6B1E2E"/>
+  <path transform="translate(2.8 2.94) scale(1.1)" d="M3 8.75 12 3.5l9 5.25ZM12 6.6h.01M4.5 10.75h15M6.5 10.75v7M10.17 10.75v7M13.83 10.75v7M17.5 10.75v7M4.5 17.75h15M3 20.25h18" fill="none" stroke="#F7F1E3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

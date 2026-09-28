@@ -1,0 +1,23 @@
+# Dépendances et build
+node_modules
+.next
+out
+build
+.vercel
+
+# Verrou de paquets
+pnpm-lock.yaml
+
+# Référence en lecture seule (voir CLAUDE.md)
+docs/
+CLAUDE.md
+
+# Rapports de tests
+coverage
+playwright-report
+blob-report
+test-results
+playwright/.cache
+
+# Divers
+*.stackdump

@@ -1,0 +1,180 @@
+@import "tailwindcss";
+
+@theme {
+  /*
+   * Réinitialise entièrement la palette de couleurs par défaut de
+   * Tailwind (donc tout bleu, tout vert, etc.) : au-delà de cette ligne,
+   * seuls les jetons de la charte graphique Cité Savante existent.
+   * Voir CLAUDE.md, section 5, et docs/SPECIFICATIONS.md, section 4.1.
+   */
+  --color-*: initial;
+
+  --color-bordeaux: #6b1e2e;
+  --color-bordeaux-profond: #4a1420;
+  --color-creme: #f7f1e3;
+  --color-creme-soutenu: #ede3cc;
+  --color-or: #b8913a;
+  --color-or-clair: #d9bd72;
+  --color-encre: #2a1a1c;
+
+  /*
+   * Échelle typographique de la charte (spécifications, section 4.2) :
+   * 14 / 16 / 18 / 22 / 28 / 36 / 48 px. Remplace l'échelle par défaut de
+   * Tailwind pour qu'aucune taille hors charte ne puisse être utilisée.
+   */
+  --text-*: initial;
+  --text-xs: 14px;
+  --text-sm: 16px;
+  --text-base: 18px;
+  --text-lg: 22px;
+  --text-xl: 28px;
+  --text-2xl: 36px;
+  --text-3xl: 48px;
+
+  /*
+   * Ombres : la charte les interdit (spécifications, section 4.3 : « pas
+   * d'ombre portée ») et les valeurs par défaut de Tailwind sont en noir pur
+   * (rgb(0 0 0 / …)), hors palette. On les supprime pour que `shadow-md`,
+   * `drop-shadow-lg`, `text-shadow-sm`… n'existent tout simplement pas.
+   */
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --text-shadow-*: initial;
+}
+
+/*
+ * `inline` : les variables --font-titre / --font-texte sont déjà déclarées
+ * par next/font/local sur <html> (voir layout.tsx). En mode `inline`,
+ * Tailwind réutilise directement cette valeur dans les classes utilitaires
+ * `font-titre` / `font-texte` au lieu de redéclarer la propriété sur
+ * `:root` (ce qui créerait une référence circulaire sur le même nom).
+ */
+@theme inline {
+  --font-titre: var(--font-titre);
+  --font-texte: var(--font-texte);
+}
+
+:root {
+  color-scheme: light;
+  /*
+   * Couleur d'accent des contrôles natifs (cases, boutons radio, curseurs,
+   * barres de progression) : bordeaux, jamais l'accent bleu du système.
+   */
+  accent-color: var(--color-bordeaux);
+}
+
+/*
+ * `@layer base` (et non des règles hors couche) : Tailwind v4 émet
+ * `@layer theme, base, components, utilities`. Une règle écrite hors
+ * couche gagne toujours contre toute règle en couche, quelle que soit sa
+ * spécificité — un futur `class="text-creme"` dans le pied de page (charte,
+ * section 4.4) ne pourrait jamais l'emporter sur un `a { color: ... }` non
+ * couché. En les plaçant dans `base`, elles restent les styles par défaut
+ * tout en laissant les classes utilitaires (`@layer utilities`) reprendre
+ * la main quand un composant en a besoin.
+ */
+@layer base {
+  body {
+    background-color: var(--color-creme);
+    color: var(--color-encre);
+    font-family: var(--font-texte), serif;
+    /* Texte courant : 17 px sur mobile, 18 px à partir de 768 px (ci-dessous). */
+    font-size: 17px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  @media (min-width: 768px) {
+    body {
+      font-size: 18px;
+    }
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-titre), serif;
+  }
+
+  a {
+    color: var(--color-bordeaux);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+
+  a:hover {
+    color: var(--color-bordeaux-profond);
+  }
+
+  /*
+   * Focus clavier : jamais l'anneau bleu par défaut du navigateur. Un seul
+   * traitement, cohérent partout, en or, uniquement au clavier
+   * (:focus-visible).
+   */
+  * {
+    outline: none;
+  }
+
+  :focus-visible {
+    @apply anneau-focus;
+  }
+
+  ::selection {
+    background-color: var(--color-or-clair);
+    color: var(--color-encre);
+  }
+
+  /* Curseur de saisie explicite, plutôt que la couleur choisie par le navigateur. */
+  input,
+  textarea,
+  select {
+    caret-color: var(--color-bordeaux);
+  }
+
+  /*
+   * Champs préremplis par le navigateur : Chrome les peint en bleu clair
+   * (#E8F0FE) par une règle `!important` de sa feuille de style interne,
+   * impossible à surcharger par `background-color`. Un aplat intérieur crème
+   * (box-shadow `inset`, ce n'est pas une ombre portée) le recouvre et le
+   * texte reste en encre. À la compilation, Lightning CSS réécrit ce
+   * sélecteur en `:autofill` standard (Chrome 110, Firefox 86, Safari 15.4
+   * et suivants, tous dans les navigateurs ciblés par Next.js).
+   */
+  input:-webkit-autofill,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: var(--color-encre);
+    box-shadow: inset 0 0 0 1000px var(--color-creme);
+  }
+}
+
+/*
+ * Contour de focus de la charte : or, 2 px, décalé de 2 px. Utilisé par
+ * `:focus-visible` ci-dessus et disponible en classe (`anneau-focus`) pour
+ * montrer l'état de focus de façon statique (page /charte).
+ */
+@utility anneau-focus {
+  outline: 2px solid var(--color-or);
+  outline-offset: 2px;
+}
+
+/*
+ * Petites capitales (badges, navigation, intitulés courts). Tailwind v4 ne
+ * fournit pas d'utilitaire pour `font-variant-caps` : classe partagée
+ * `petites-capitales`, à réutiliser plutôt que de réécrire la propriété.
+ */
+@utility petites-capitales {
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.06em;
+}
+
+/*
+ * Chiffres tabulaires (dates, horodatages, montants, comptes à rebours) :
+ * la classe utilitaire `tabular-nums` de Tailwind est native et ne dépend
+ * pas de la palette de couleurs ci-dessus ; aucune redéfinition nécessaire.
+ */
