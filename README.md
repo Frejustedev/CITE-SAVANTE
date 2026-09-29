@@ -23,8 +23,12 @@ pnpm test           # Vitest (tests unitaires)
 pnpm test:e2e       # Playwright (parcours de bout en bout)
 pnpm format         # Prettier
 pnpm build          # build de production
-pnpm db:types       # régénère src/lib/supabase/types.ts depuis Supabase (phase 1)
+pnpm db:valider     # applique migrations et données sur une base PostgreSQL locale jetable, puis lance les tests SQL (RLS, déclencheurs)
+pnpm db:types       # régénère src/lib/supabase/types.ts depuis cette base locale
+pnpm db:types:distant  # régénère src/lib/supabase/types.ts depuis le projet Supabase lié (CLI)
 ```
+
+Détail de la base locale, de la CLI Supabase et de la liaison au projet distant : `PROGRESS.md`, phase 1.
 
 ## Documentation du projet
 
