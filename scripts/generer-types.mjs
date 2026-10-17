@@ -45,7 +45,7 @@ const ICI = dirname(fileURLToPath(import.meta.url));
 const RACINE = join(ICI, "..");
 const FICHIER_SORTIE = join(RACINE, "src", "lib", "supabase", "types.ts");
 
-const PG_BIN = process.env.PG_BIN ?? "C:/Users/agbot/Desktop/pgsql/pgsql/bin";
+const PG_BIN = process.env.PG_BIN ?? "C:/Users/agbot/Desktop/PROJETS/pgsql/pgsql/bin";
 const PG_HOST = process.env.PG_HOST ?? "localhost";
 const PG_PORT = process.env.PG_PORT ?? "54390";
 const PG_USER = process.env.PG_USER ?? "postgres";

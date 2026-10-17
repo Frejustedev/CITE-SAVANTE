@@ -553,7 +553,7 @@ export default function PageCharte() {
               ))}
             </Demonstration>
             <div className="mt-6">
-              <Demonstration legende="Variante « urgent » pour les échéances proches : le texte dit toujours pourquoi.">
+              <Demonstration legende="Variante « urgent » pour les échéances à 7 jours ou moins, texte encre sur or : le texte dit toujours pourquoi.">
                 <Badge variante="urgent">Clôture dans 3 jours</Badge>
               </Demonstration>
             </div>

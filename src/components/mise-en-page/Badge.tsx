@@ -12,14 +12,15 @@ type BadgeProps = {
 
 const classesVariantes: Record<VarianteBadge, string> = {
   standard: "bg-or-clair text-bordeaux",
-  urgent: "bg-bordeaux text-creme",
+  urgent: "bg-or text-encre",
 };
 
 /**
  * Badge de la charte (section 4.3) : petites capitales, texte bordeaux sur
- * or clair. La variante « urgent » (crème sur bordeaux) signale une échéance
- * proche ; le texte doit dire pourquoi (« Clôture dans 3 jours »), la
- * couleur seule ne suffit pas.
+ * or clair. La variante « urgent » signale une échéance à 7 jours ou moins :
+ * « badge or » (spécifications, section 7), texte encre sur fond or (rapport
+ * 5,66:1, conforme AA ; couple vérifié par `charte.test.ts`). Le texte doit
+ * dire pourquoi (« Clôture dans 3 jours ») : la couleur seule ne suffit pas.
  */
 export function Badge({ variante = "standard", className, children }: BadgeProps) {
   return (

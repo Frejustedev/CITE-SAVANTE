@@ -355,7 +355,9 @@ d'erreur en français, une ligne par variable, qui distingue « variable
 manquante » d'une valeur mal formée. Requises maintenant : `NEXT_PUBLIC_SITE_URL`,
 `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
 `SUPABASE_SERVICE_ROLE_KEY`. Facultatives jusqu'à leur phase (Resend, Turnstile,
-`FORM_HASH_SALT`, `CRON_SECRET`, `ADMIN_NOTIFY_EMAIL`) : `null` si absentes,
+`FORM_HASH_SALT`, `CRON_SECRET`, `ADMIN_NOTIFY_EMAIL`) : `null` si absentes ou
+vides (correction de la phase 2 : une valeur vide, comme dans `.env.example`, vaut
+« absente »),
 plutôt que de bloquer un `.env.local` encore incomplet en phase 1 (décision 16).
 `process.env.NEXT_PUBLIC_...` écrit littéralement (jamais `process.env[cle]`) :
 Next.js remplace ces expressions au moment du build, ce qui permet d'appeler
@@ -446,9 +448,24 @@ disponible même si `unstable_cache` est marqué comme remplacé par `use cache`
 en Next 16 (qui, lui, EXIGE `cacheComponents`) :
 
 1. Une lecture publique (`src/lib/requetes/*.ts`) est enveloppée par
-   `unstable_cache(fn, cle, { tags })`, étiquetée avec une ou plusieurs
-   constantes de `src/lib/cache.ts` (`societes`, `evenements`, `disciplines`,
-   `emplacements`, section 8 des spécifications).
+   `unstable_cache(fn, cle, { tags, revalidate: DUREE_VALIDITE_CACHE })`,
+   étiquetée avec une ou plusieurs constantes de `src/lib/cache.ts`
+   (`societes`, `evenements`, `disciplines`, `emplacements`, section 8 des
+   spécifications) ET bornée à 5 minutes (`DUREE_VALIDITE_CACHE = 300`,
+   ajouté par la correction de la phase 2 ; garde-fou : `src/lib/cache.test.ts`).
+   La durée est un filet de sécurité pour les écritures faites HORS d'une
+   server action (éditeur SQL, tableau de bord Supabase, script), qui
+   n'invalident rien : sans elle, une fiche corrigée en SQL restait servie
+   telle quelle jusqu'à un an. Passé le délai, `unstable_cache` sert encore
+   l'ancienne valeur et relit en arrière-plan : une écriture SQL apparaît au
+   plus tard à la deuxième visite après 5 minutes.
+   Exceptions (phase 2) : aucune lecture dont la clé viendrait d'une saisie
+   libre du visiteur n'est mise en cache, car chaque saisie créerait une
+   entrée persistante (un fichier par entrée dans `.next/cache/fetch-cache`
+   en auto-hébergement) ; d'où : recherche texte de l'annuaire non mise en
+   cache (comme la lecture de la passerelle), et fiche lue (puis mise en
+   cache) seulement si son slug figure dans la liste déjà en cache des
+   organisations publiées.
 2. Chaque page publique qui appelle une fonction de `src/lib/requetes/`
    (phase 2 et suivantes) exporte `export const dynamic = "force-dynamic";` :
    la PAGE n'est jamais tentée au build (elle n'a pas de base de données à ce
@@ -480,7 +497,8 @@ dans « Vérifications ».
 
 Migration future vers `use cache` (quand `cacheComponents` sera activé,
 décision d'une phase ultérieure) : remplacer `unstable_cache(fn, cle, {tags})`
-par `'use cache'` + `cacheTag(...)` en tête de chaque fonction de
+par `'use cache'` + `cacheTag(...)` + `cacheLife` (durée équivalente à
+`DUREE_VALIDITE_CACHE`) en tête de chaque fonction de
 `src/lib/requetes/`, garder les mêmes constantes d'étiquette, remplacer
 `updateTag` par son équivalent (déjà celui utilisé ici) ou `revalidateTag(tag,
 { expire: 0 })` si l'invalidation doit un jour se faire hors d'une server
@@ -723,9 +741,13 @@ Aucune page n'utilise encore ces requêtes (prévu, phases 2 à 4).
     qualification dépendrait du `search_path` de la session appelante, donc du
     hasard de l'ordre de connexion.
 20. Règle de rendu des lectures publiques (`unstable_cache` + étiquettes +
-    `export const dynamic = "force-dynamic"` sur la page + `invalider()` →
-    `updateTag` depuis les server actions) : détaillée dans « Clients Supabase,
-    types, cache et requêtes » ci-dessus. Choisie plutôt que `cacheComponents`
+    durée de validité de 5 minutes, `DUREE_VALIDITE_CACHE`, depuis la
+    correction de la phase 2 + `export const dynamic = "force-dynamic"` sur la
+    page + `invalider()` → `updateTag` depuis les server actions ; aucune mise
+    en cache d'une lecture dont la clé est une saisie libre du visiteur :
+    recherche texte, passerelle, slug absent de la liste des organisations
+    publiées) : détaillée dans « Clients Supabase, types, cache et requêtes »
+    ci-dessus. Choisie plutôt que `cacheComponents`
     (`use cache`) parce que ce dernier exigerait un `<Suspense>` autour de
     chaque accès à une donnée non mise en cache sur TOUTES les pages
     existantes et à venir — une décision d'architecture globale, hors du
@@ -995,13 +1017,13 @@ fonctionne »).
 
 ### Validation locale
 
-Prérequis : PostgreSQL 17.6 portable (`C:/Users/agbot/Desktop/pgsql/pgsql/bin`) et la
-grappe du projet (`C:/Users/agbot/Desktop/pgsql/data_citesavante`, port 54390,
+Prérequis : PostgreSQL 17.6 portable (`C:/Users/agbot/Desktop/PROJETS/pgsql/pgsql/bin`) et la
+grappe du projet (`C:/Users/agbot/Desktop/PROJETS/pgsql/data_citesavante`, port 54390,
 utilisateur `postgres` en `trust`). Si elle ne répond pas, la démarrer :
 
 ```bash
-"C:/Users/agbot/Desktop/pgsql/pgsql/bin/pg_ctl.exe" -D C:/Users/agbot/Desktop/pgsql/data_citesavante \
-  -l C:/Users/agbot/Desktop/pgsql/data_citesavante.server.log -o "-p 54390" -w start > /dev/null 2>&1
+"C:/Users/agbot/Desktop/PROJETS/pgsql/pgsql/bin/pg_ctl.exe" -D C:/Users/agbot/Desktop/PROJETS/pgsql/data_citesavante \
+  -l C:/Users/agbot/Desktop/PROJETS/pgsql/data_citesavante.server.log -o "-p 54390" -w start > /dev/null 2>&1
 ```
 
 Lancer la validation :
@@ -1424,6 +1446,771 @@ Choix restant à trancher ou à confirmer :
   Next 16 (toujours fonctionnel) : à surveiller au fil des versions de Next.js
   (migration décrite dans « Clients Supabase, types, cache et requêtes »).
 
+## Phase 2 — annuaire et passerelle
+
+**État : code fait ; relecture adversariale faite sur données réelles (API locale,
+`next start`) ; ses constats corrigés (« Corrections après la relecture
+adversariale »), sauf la page 404 d'une fiche vide sans JavaScript (limite de
+Next 16.3.6), acceptée pour la phase 2 et à corriger en phase 5 (« Décisions »).
+Vérification complète du 13 octobre 2026 : quatre constats, tous reproduits ;
+`page_origine` corrigé ; les trois autres tranchés par le coordinateur le
+14 octobre 2026 : 404 sans JavaScript et préchargements en 404 acceptés
+(« Décisions »), monogramme des sigles longs corrigé par un resserrement de
+15 % au plus (« Retouches du coordinateur », avec le journal de la passerelle
+et la transition du contour de focus).** Les six points du
+prompt de phase 2 (`docs/PROMPTS.md`) sont écrits :
+annuaire `/societes`, monogramme, fiche `/societes/[slug]`, passerelle
+`/go/[type]/[id]`, utilitaires testés (dates, slugs, liens), carte d'événement
+minimale. Critère « un clic sur Site officiel crée une ligne dans `clics_sortants` »
+vérifié avec le `.env.local` tel quel. Lighthouse (accessibilité ≥ 95) : 100 sur
+les deux pages, mobile et ordinateur. Aucun choix bloquant ne reste : le commit
+`feat(phase-2): annuaire et passerelle` peut être fait. Aucune dépendance ajoutée.
+
+Travail mené par quatre agents (fondations, annuaire, fiche, passerelle), puis une
+intégration (relecture d'ensemble, corrections, vérifications), une relecture
+adversariale et une correction.
+
+### Fait
+
+- **Utilitaires purs et testés** (`src/lib/utils/`, un `.test.ts` chacun) :
+  - `dates.ts` : `lireDateIso` (lève sur une date inexistante, jamais
+    `new Date("AAAA-MM-JJ")`), `formaterDate` (« 12 mars 2027 », « 1er mai 2027 »),
+    `formaterDateCourte`, `formaterPeriode` (les quatre formes de CLAUDE.md, « 1er »
+    compris ; lève si la fin précède le début), `joursRestants`, `estUrgente`
+    (7 jours ou moins, `SEUIL_URGENCE_JOURS`), `decrireJoursRestants`. Noms des mois
+    par date-fns, locale `fr`.
+  - `slugs.ts` : `slugifier`, `estSlugValide`, `slugSigle`, `slugSociete`, `slugEvenement`
+    (`type-sigle-annee`, sinon `titre-annee`), `dedoublonnerSlug` (`-2`, `-3`…).
+  - `urls.ts` : `estUrlHttpsSure`, `ajouterUtm`, `cheminOrigineValide`,
+    `lirePageOrigine`, `cheminPasserelle` (contrat entre la fiche et la passerelle),
+    `DESTINATIONS_PASSERELLE`, `urlAbsolue`, `hrefTelephone`, `hrefCourriel`.
+  - `annuaire.ts` (lecture des filtres de l'URL, `cleRecherche`, filtrage, tri français par
+    `Intl.Collator`, pagination par 24, villes), `evenements.ts` (types des cartes,
+    conversion des lignes, à venir / passés), `reseaux.ts` (liens `https://` sûrs
+    seulement ; WhatsApp `+international` → `https://wa.me/…`), `monogramme.ts`
+    (disposition du sigle).
+- **`src/lib/stockage.ts`** : `urlLogo` et `urlPubliqueStockage` ; chemin relatif au
+  bucket, tout chemin suspect donne `null` (le monogramme s'affiche).
+- **`next.config.ts`** : `images.remotePatterns` limités aux trois buckets publics de
+  l'hôte de `NEXT_PUBLIC_SUPABASE_URL` (aucun motif sans variable : le build passe),
+  `dangerouslyAllowLocalIP` seulement si cet hôte est sur la boucle locale, formats
+  AVIF et WebP.
+- **Lectures** (`src/lib/requetes/`, règles de la phase 1 respectées : colonnes
+  listées, `statut = 'publie'` explicite, tables jointes comprises, `unstable_cache`
+  étiqueté et borné à 5 minutes, « aujourd'hui » reçu en argument) :
+  - `societes.ts` : `listerSocietesAnnuaire` (liste complète mise en cache puis
+    filtrée en mémoire ; recherche texte par la fonction SQL `rechercher`, la même que
+    `/recherche`, non mise en cache), `listerVillesAnnuaire`, `obtenirSocietePubliee`
+    (slug exact et présent dans la liste des organisations publiées, sinon `null`),
+    `listerSlugsSocietesPubliees` (slugs tirés de la même entrée de cache : fiche et
+    passerelle), `compterSocietesPubliees` (`select("id", { count: "exact", head: true })`).
+  - `evenements.ts` : `listerEvenementsSociete` (deux requêtes : rattachements
+    organisateur ou co-organisateur, puis les événements publiés),
+    `listerEvenementsAVenir` gagne le paramètre `aujourdhui`.
+- **Composants** : `Monogramme` (cartouche de plan dessiné au trait, jetons de la
+  charte seulement ; sigle sur deux lignes au-delà de 4 lettres environ ; ligne trop
+  large resserrée de 15 % au plus pour garder 11 px), `LogoSociete` (`next/image`, monogramme à défaut),
+  `CarteSociete` et `CarteEvenement` (un seul lien par carte, étendu à toute la carte,
+  contour de focus sur la carte ; `CarteEvenement` sera enrichie en phase 3).
+- **`/societes`** (`src/app/societes/page.tsx`, `src/components/societes/annuaire/`) :
+  en-tête avec le nombre d'organisations publiées ; `<form method="get">` qui
+  fonctionne sans JavaScript, enrichi côté client (envoi par `router.push`, listes
+  envoyées seules après 300 ms, « Mise à jour des résultats… ») ; résumé
+  `role="status"` ; cartes ; pagination par 24 qui garde les filtres ; état vide avec
+  « Référencer une société » ; page hors limites redirigée (307) vers la dernière page.
+- **`/societes/[slug]`** (`src/app/societes/[slug]/`, `src/components/societes/fiche/`) :
+  fil d'Ariane, en-tête (logo, un seul `h1` avec sigle et nom complet, catégorie,
+  disciplines, ville, année de création), boutons « Site officiel » et « Plateforme
+  de congrès » par `/go` (balise `<a>` native, jamais `next/link`), présentation (texte
+  libre affiché comme texte), contacts (`mailto:`, `tel:`, réseaux en
+  `noopener noreferrer nofollow`), événements à venir en cartes, événements passés
+  dans un `<details>` replié, lien « Gérer cette fiche » (`prefetch={false}`),
+  JSON-LD `Organization` et `BreadcrumbList` sérialisés sans injection possible,
+  métadonnées et canonique, page 404 (`not-found.tsx` ; vide sans JavaScript, limite
+  acceptée pour la phase 2, voir « Décisions »).
+- **`src/app/societes/error.tsx`** : erreur de chargement en français (annuaire et
+  fiche), bouton « Réessayer » (`retry`, Next 16.3).
+- **Passerelle** (`src/app/go/[type]/[id]/route.ts`, `src/lib/passerelle/`) : route
+  mince (`force-dynamic`, `GET` et `HEAD`), logique pure dans `analyse.ts`, accès aux
+  données dans `donnees.ts` (client reçu en paramètre ; lecture par le client anonyme,
+  écriture du clic par le client de service), enchaînement dans `passerelle.ts`.
+  Table de décision en tête de `passerelle.ts` ; toutes les réponses portent
+  `X-Robots-Tag: noindex` et `Cache-Control: no-store`.
+- **Tests Vitest ajoutés** : les sept fichiers de `src/lib/utils/`, `stockage.test.ts`,
+  `src/components/cartes.test.tsx`, `annuaire/annuaire.test.tsx`,
+  `fiche/utilitaires.test.ts`, `fiche/donneesStructurees.test.ts`,
+  `fiche/fiche.test.tsx`, `passerelle/analyse.test.ts`,
+  `passerelle/passerelle.test.ts` (faux client Supabase en mémoire).
+
+### Intégration : corrections
+
+- **`src/lib/securite.test.ts`** (demande de l'agent passerelle, acceptée) : la route
+  `app/go/[type]/[id]/route.ts` devient le premier appelant autorisé du client de
+  service (insertion dans `clics_sortants`, usage listé en tête de
+  `supabase/service.ts`). Aucun autre fichier ne l'importe.
+- **`src/lib/requetes/disciplines.ts`** : `select("*")` remplacé par la liste des six
+  colonnes (même type renvoyé). La table n'a pas de privilèges par colonne, mais la
+  règle « jamais `select("*")` » vaut pour toutes les lectures.
+- **Typographie** : espace insécable avant « : » dans la ligne d'échéance de
+  `CarteEvenement` ; apostrophe typographique dans « aujourd’hui »
+  (`decrireJoursRestants`), comme dans tous les textes du site. Tests ajustés.
+
+### Corrections après la relecture adversariale
+
+Relecture adversariale du 12 octobre 2026 (dix constats prouvés), corrigée le
+13 octobre 2026 selon les arbitrages du coordinateur. Chaque constat a été reproduit
+(preuves de la relecture, ou ancien test qui attendait le comportement fautif) puis
+vérifié après correction ; « 404 sans JavaScript » n'est PAS corrigé (point 2 :
+accepté pour la phase 2, correction en phase 5, voir « Décisions »).
+
+1. **Aucun clic enregistré avec le `.env.local` fourni** (gravité haute). Cause :
+   `envServeur()` refusait les variables facultatives présentes mais vides
+   (`RESEND_API_KEY=`, `ADMIN_NOTIFY_EMAIL=`, `FORM_HASH_SALT=`, `CRON_SECRET=`,
+   comme dans `.env.example`), donc `creerClientService()` levait et la passerelle
+   redirigeait sans enregistrer. Correction (`src/lib/env.ts`) : une variable
+   facultative vide ou faite d'espaces vaut « absente » (`z.preprocess` vers
+   `undefined`), y compris `ADMIN_NOTIFY_EMAIL` (`z.email()`) et
+   `NEXT_PUBLIC_TURNSTILE_SITE_KEY` ; une variable REQUISE vide reste refusée.
+   Tests (`env.test.ts`) : « .env.local copié de .env.example » (le fichier
+   `.env.example` est relu, seules les trois variables Supabase sont complétées) pour
+   `envPublic()` et `envServeur()`, variables facultatives vides, requise vide ; les
+   deux premiers échouaient sur l'ancien `env.ts` (vérifié). Vérifié sur
+   `next start -p 3104` avec le `.env.local` TEL QUEL : un GET sur
+   `/go/societe/de110000-…-0001?vers=site&from=/societes/demo-sbmi` → 302 vers
+   `https://example.org/sbmi?utm_source=citesavante&utm_medium=referral`, UNE ligne
+   (`societe`, l'identifiant, cette URL, `page_origine = /societes/demo-sbmi`), aucun
+   « Clic non enregistré » dans le journal ; `HEAD` → 302 sans ligne. Lignes de test
+   supprimées (`clics_sortants` revenu à 0).
+2. **Page 404 d'une fiche vide sans JavaScript** : NON CORRIGÉ en phase 2, par
+   décision du coordinateur du 14 octobre 2026 (« Décisions » : accepté, correction
+   en phase 5 dans `proxy.ts`). Correction prescrite appliquée :
+   `generateMetadata` ne lève plus `notFound()` (il renvoie « Organisation
+   introuvable » et `robots: { index: false }`), seule la page le lève. Elle ne
+   suffit pas : `curl` sur `/societes/inexistant`, `/societes/DEMO-SBMI`,
+   `/societes/sobeped` (brouillon) et `/societes/demo-iehp` (en attente) donne
+   toujours 404, le bon titre et `noindex`, mais `<html id="__next_error__">` sans
+   `lang`, `<body>` vide, aucun `h1` (le texte n'est que dans les données du
+   routeur, rendu par JavaScript). Cause racine : dans Next 16.3.6, tout `notFound()`
+   levé pendant le rendu du shell d'une page dynamique passe par la reprise sur
+   erreur de `renderToStream` (`next/dist/server/app-render/app-render.js`) ; la
+   frontière `not-found.tsx` est un error boundary de classe, que le rendu serveur
+   de React n'applique pas. La 404 générale (`/page-inexistante`) n'est pas
+   touchée : c'est la route statique `/_not-found`. Remède documenté par Next
+   (`loading.md`, « Status Codes ») : vérifier le slug dans `proxy.ts` et réécrire
+   vers une page introuvable. Coûts : nouvelle convention de fichier ; lecture hors
+   de `src/lib/requetes/` et sans `unstable_cache` ; un aller-retour à la base par
+   requête `/societes/{slug}` (préchargements de l'annuaire compris, sauf à exclure
+   l'en-tête `RSC`) ; la réécriture ne peut viser que la 404 générale statique
+   (« Page introuvable ») ou une route statique réservée (`/societes/introuvable`,
+   qui interdit ce slug).
+3. **Entrées de cache créées à volonté par le visiteur** (slugs inventés, chaque
+   texte `q`). Corrections : `obtenirSocietePubliee` cherche d'abord le slug dans
+   `listerSocietesPubliees()` (une seule entrée de cache) et renvoie `null` sans
+   lire ni mettre en cache s'il est inconnu ; la recherche texte de l'annuaire n'est
+   plus mise en cache (choix justifié dans « Décisions »). Vérifié sur 3104,
+   `.next/cache/fetch-cache` vidé au départ : six slugs inconnus → 1 seul fichier
+   (la liste) ; six puis six recherches différentes (`zzrelecturea`,
+   `ZZRELECTUREA`, `zzrélecturea`…) et quatre slugs inconnus de plus → nombre de
+   fichiers inchangé ; seules les fiches existantes ajoutent leurs deux entrées.
+4. **Données périmées jusqu'à un an** après une écriture hors server action.
+   Correction : `revalidate: DUREE_VALIDITE_CACHE` (300 s, `src/lib/cache.ts`) sur
+   les huit `unstable_cache` de `src/lib/requetes/`, en plus des étiquettes ; règle de
+   rendu (décision 20) mise à jour aux deux endroits. Garde-fou statique :
+   `src/lib/cache.test.ts` (chaque `unstable_cache` porte étiquettes et durée ;
+   vérifié qu'il échoue si l'on retire la durée de `disciplines.ts`). Vérifié sur
+   3104 : les 21 fichiers de cache créés pendant les essais portent tous
+   `"revalidate":300` et leurs étiquettes.
+5. **Clé de recherche non normalisée** (casse). Sans objet pour le cache depuis le
+   point 3 (plus de clé) ; la forme envoyée à `rechercher()` est désormais
+   normalisée par `cleRecherche` (`src/lib/utils/annuaire.ts` : NFC, minuscules,
+   espaces et caractères invisibles), qui ne retire QUE ce que la fonction SQL
+   ignore déjà : la casse (`websearch_to_tsquery` et `pg_trgm`, vérifié en SQL), pas
+   les accents (`similarity('SOBÉPED','sobeped')` = 0,45 contre 1 pour
+   `sobéped`). Le champ du formulaire garde la saisie du visiteur. Tests :
+   `annuaire.test.ts` (« pediatrie », « Pediatrie », « PEDIATRIE », espaces → une
+   seule forme ; « Pédiatrie » garde son accent ; accent décomposé composé).
+6. **`page_origine` en texte libre** (un lien forgé `from=/jean.dupont@exemple.org`
+   était enregistré). Correction : `pageOrigine` décode le chemin (sans paramètres
+   ni fragment) et ne le garde que s'il a la forme d'une page publique du site
+   (liste fermée : `/`, `/societes`, `/societes/{slug}`, `/agenda`, `/agenda/{slug}`,
+   `/echeances`, `/disciplines/{slug}`, `/recherche`), sinon `null`. Tests
+   (`analyse.test.ts`) : formes admises, chemin encodé décodé, adresse électronique,
+   `/espace/…`, majuscules, barre finale, slug invalide → `null`. Vérifié sur 3104 :
+   le lien forgé crée une ligne avec `page_origine` nul (puis supprimée). Complété
+   après la vérification complète (la forme seule laissait passer un slug inventé) :
+   voir « Suites de la vérification complète », point 3.
+7. **`S.B.C.` donnait `s-b-c`** (l'ancien test l'attendait). Correction :
+   `slugSigle` (`src/lib/utils/slugs.ts`) retire points, apostrophes (droite,
+   typographiques) et espaces avant de slugifier : `S.B.C.`, `S B C` → `sbc`,
+   `SOB’AN` → `soban`, `UAC FSS` → `uacfss` (et non plus `uac-fss`) ; le tiret reste
+   (`UAC-FSS` → `uac-fss`). Partagée par `slugSociete` et `slugEvenement`
+   (`congres-sbc-2027`). Tests ajoutés dans `slugs.test.ts`.
+8. **Demi-emoji dans les descriptions coupées.** Correction : `resumerTexte`
+   (`fiche/utilitaires.ts`) compte et coupe en graphèmes (`Intl.Segmenter`) ; le test
+   de longueur aussi. Tests : emoji à la coupe (cas de la relecture), emoji à
+   modificateur, accent combinant, description des métadonnées
+   (`utilitaires.test.ts`) et du JSON-LD (`donneesStructurees.test.ts`) bien formées
+   (`isWellFormed`) pour chaque décalage autour de la limite.
+9. **Première requête des événements d'une organisation sans filtre de statut.**
+   Correction (`requetes/evenements.ts`) : jointure
+   `evenements!inner ( id )` et filtre `.eq("evenements.statut", "publie")`, comme
+   l'annuaire. Vérifié sur l'API locale : avec la clé de service (RLS contournée),
+   l'organisation `…0006` a deux rattachements organisateurs dont un événement en
+   attente ; la requête filtrée n'en renvoie qu'un. La fiche `demo-sbmi` affiche
+   toujours ses deux événements à venir et ses deux événements passés.
+10. **Hors périmètre** : fil d'Ariane, `BreadcrumbList` et champs JSON-LD
+    supplémentaires CONSERVÉS (arbitrage du coordinateur, voir « Décisions ») ;
+    `scripts/api-locale.mjs` sera commité et documenté (« Décisions »).
+11. **Badge d'échéance urgente** (arbitrage) : variante `urgent` de `Badge` en texte
+    `encre` sur fond `or` (« badge or », section 7), rapport 5,66:1 calculé par
+    `src/lib/utils/contraste.ts` ; couple ajouté à `couplesUtilises`
+    (`src/lib/charte.ts`), testé (`charte.test.ts`, valeur attendue 5,66) ; classes
+    vérifiées sur la carte d'événement (`cartes.test.tsx`) et à l'écran (fiche
+    `demo-abde`, « Clôture dans 2 jours » : couleur `rgb(42, 26, 28)` sur
+    `rgb(184, 145, 58)`). Légende de `/charte` mise à jour.
+12. **Monogramme trop petit pour les sigles de 5 lettres et plus** (arbitrage :
+    capitales d'au moins ~11 px sur la carte de 64 px, sigles jusqu'à
+    8 caractères). Choix : deux lignes empilées dans le cartouche carré (voir
+    « Décisions »). Vérifié par mesure dans Chrome (`getBBox` et
+    `getComputedTextLength` sur 3104) et par captures regardées, à 1280 et 360 px :
+    annuaire, capitales de 11,2 à 12,5 px (`SB / GEO`, `AB / ENV`, `SBA / GRO`,
+    `SB / SHS` ; `SBMI`, `ABDE`, `ABIN`, `ABPN` sur une ligne), aucune ligne hors du
+    cadre intérieur ; en-tête de fiche à 80 px (360) et 128 px (1280) : 14 et
+    22,4 px ; aucun défilement horizontal. Tests (`monogramme.test.ts`) : seuil de
+    11 px pour dix-sept sigles réalistes de 3 à 8 caractères, bloc de deux lignes
+    entre les filets ornés, limites connues. Complété le 14 octobre 2026 par un
+    resserrement de 15 % au plus pour les sigles encore sous 11 px (« Retouches du
+    coordinateur », point 1).
+
+### Suites de la vérification complète
+
+Vérification complète du 13 octobre 2026 (quatre constats prouvés). Chacun a été
+reproduit le même jour sur `next start -p 3106` (build à jour, `.env.local` tel
+quel, API locale) ou par la fonction pure ; un seul relève du code de la phase 2
+sans arbitrage (point 3), il est corrigé ; les trois autres ont été tranchés par le
+coordinateur le 14 octobre 2026 : points 1 et 2 acceptés (« Décisions »), point 4
+corrigé (« Retouches du coordinateur », point 1).
+
+1. **404 d'une fiche vide sans JavaScript** (gravité haute ; accepté pour la
+   phase 2, correction en phase 5 : voir « Décisions »). Reproduit : `/societes/inexistant`, `/societes/DEMO-SBMI`,
+   `/societes/sobeped` (brouillon), `/societes/demo-iehp` (en attente),
+   `/societes/demo-sbjur` → 404, titre « Organisation introuvable — Cité Savante »,
+   `noindex`, mais `<html id="__next_error__">` sans `lang`, aucun `h1` et corps vide
+   hors `<script>` ; témoin `/page-inexistante` → 404, `<html lang="fr">`, un `h1`,
+   texte présent. Avec JavaScript (Chrome) : `lang="fr"` et
+   `h1 = « Organisation introuvable »`. Cause relue dans Next 16.3.6 :
+   `renderToStream` (`app-render.js`, « errorRecovery ») traite tout `notFound()`
+   levé pendant le rendu du shell en renvoyant la coquille de `getErrorRSCPayload`
+   (`<html id="__next_error__"><head/><body/>`) ; la frontière `not-found.tsx` est
+   le composant client `HTTPAccessFallbackBoundary`, appliqué seulement dans le
+   navigateur. Aucun réglage de la page ne l'évite sans perdre le statut 404 :
+   seule une vérification AVANT le rendu (`proxy.ts`) le permet (documentation
+   Next, `loading.md`, « Status Codes »). Ce proxy ne peut pas s'appuyer sur
+   `unstable_cache` (`proxy.md` : « you should not attempt relying on shared
+   modules or globals ») : une lecture de la base par affichage de fiche.
+2. **Préchargements en 404 qui ne se terminent jamais** (gravité basse ; accepté :
+   disparaît au fil des phases 3 à 5, voir « Décisions »). Reproduit dans Chrome
+   (`/`, `/societes`, `/societes/demo-sbmi`, `/societes/demo-abde`, 6 s après
+   `load`) : 27 réponses 404, 27 erreurs console « Failed to load resource », 27
+   requêtes encore « en cours », toutes des préchargements RSC (`?_rsc=…`) de
+   routes absentes : `/agenda`, `/echeances`, `/referencer`, `/visibilite` (en-tête,
+   4 fois chacune), `/a-propos`, `/contact`, `/mentions-legales`, `/confidentialite`
+   (pied de page, visible sur `/`), `/disciplines/{slug}` et `/agenda/{slug}`
+   (fiches). `curl` avec les mêmes en-têtes : 404 complète en 5 ms (327 octets).
+   Le serveur répond donc bien ; c'est le routeur de Next qui ne lit pas le corps
+   d'une réponse de préchargement en 404, et Chrome laisse la requête ouverte.
+   Correction écartée : `prefetch={false}` sur chaque lien vers une route absente,
+   dans des composants des phases 0 et 2, à retirer phase par phase.
+3. **`page_origine` : toute forme de fiche était enregistrée** (gravité basse ;
+   CORRIGÉ). Reproduit : `from=/agenda/jean-dupont-exemple-org-0100000000` et
+   `from=/societes/n-importe-quoi` → 302 et lignes avec ces chemins (supprimées).
+   Cause : `estPageOrigineConnue` ne vérifiait que la FORME
+   (`/societes|agenda|disciplines/{slug}`). Correction :
+   - `src/lib/utils/urls.ts` : `lirePageOrigine` (remplace `estPageOrigineConnue`)
+     renvoie la page reconnue, `{ chemin, fiche: null }` pour une page fixe (`/`,
+     `/societes`, `/agenda`, `/echeances`, `/recherche`) ou
+     `{ chemin, fiche: { rubrique, slug } }` pour `/societes/{slug}` ;
+     `RUBRIQUES_ORIGINE_A_SLUG` ne contient plus que `societes` : `/agenda/{slug}` et
+     `/disciplines/{slug}`, pages encore inexistantes, donnent `null` (à rouvrir en
+     phase 3 et 4 avec leur propre vérification) ;
+   - `src/lib/passerelle/passerelle.ts` : nouvelle dépendance `slugsPublies`
+     (`Record<RubriqueOrigine, …>` : ajouter une rubrique oblige à fournir sa
+     lecture) ; pour un clic COMPTÉ seulement, une fiche n'est enregistrée que si
+     son slug figure parmi les fiches publiées, sinon `null` ; lecture impossible →
+     `null`, journalisé sans le slug, redirection maintenue ;
+   - `src/lib/requetes/societes.ts` : `listerSlugsSocietesPubliees` (slugs tirés de
+     la liste en cache, aucune lecture de plus), utilisée aussi par
+     `obtenirSocietePubliee` ; branchée dans `src/app/go/[type]/[id]/route.ts`.
+     `passerelle.ts` n'importe pas `src/lib/requetes/` (`server-only`) : la lecture
+     lui est fournie par la route.
+
+   Tests : `analyse.test.ts` (pages fixes, fiche reconnue avec son slug,
+   `/agenda/{slug}` et `/disciplines/{slug}` → `null`) ; `passerelle.test.ts`, nouveau
+   bloc « page d'origine d'une fiche : slug publié exigé » (fiche publiée gardée avec
+   une seule lecture ; slug inventé, nom en forme de slug, fiche non publiée → `null`
+   sans journal ; `/agenda/…` et `/disciplines/…` → `null` sans lecture ; page fixe
+   sans lecture ; lecture qui lève → `null`, journal sans le slug, 302 ; HEAD,
+   préchargement et cible introuvable → aucune lecture). Contre-épreuve : en
+   remplaçant la vérification par « toujours garder », les trois cas `null` du bloc
+   échouent.
+
+4. **Monogramme : capitales sous 11 px pour certains sigles longs** (gravité basse ;
+   CORRIGÉ le 14 octobre 2026 par un resserrement de 15 % au plus : « Retouches du
+   coordinateur », point 1). Reproduit par la fonction pure
+   (`disposerMonogramme`, mêmes valeurs que la mesure dans Chrome) : `ZTESTMMW` →
+   `ZTEST / MMW`, taille 22,2, capitales de 9,95 px à 64 px. Constat nouveau : un
+   sigle RÉEL de `seed.sql`, `SOBENCHIR` (9 caractères, au-delà de l'arbitrage de
+   8), donne `SOBE / NCHIR`, taille 21, capitales de 9,41 px (le `SOBENCHI` de la
+   liste des tests n'est pas ce sigle). Les quatorze autres sigles de la base
+   (démonstration comprise) restent entre 11,2 et 14,3 px. Aucune disposition sans
+   déformation n'atteint 11 px pour ces sigles : à 24,6 (seuil de 11 px), `ZTEST`
+   mesure 81,9 unités et `NCHIR` 86,4 pour 74 disponibles (cadre intérieur : 84) ;
+   trois lignes plafonnent à la taille 21,4 entre les filets (9,6 px). Tests
+   ajoutés alors (`monogramme.test.ts`), qui figeaient ces valeurs : `ZTESTMMW`
+   (9,95 px, sans compression), `SOBENCHIR` (9,41 px), `MMWW` (`MM / WW`, 11,2 px,
+   au seuil) ; les deux premiers sont remplacés par ceux du resserrement.
+
+### Retouches du coordinateur
+
+Le 14 octobre 2026, quatre retouches décidées par le coordinateur après la
+vérification complète. Mesures dans Chromium 1234 sans interface
+(`chrome-headless-shell` ; le `chrome.exe` de la même révision ne démarre pas sur ce
+poste, « spawn UNKNOWN ») sur `next start -p 3107` (build à jour, `.env.local` tel
+quel, API locale), avec le même script avant (13 octobre) et après.
+
+1. **Monogramme : resserrement de 15 % au plus** (`src/lib/utils/monogramme.ts` ;
+   `src/components/societes/Monogramme.tsx`, commentaire seulement). La disposition
+   (une ou deux lignes, coupe, taille) est calculée comme avant ; si les capitales
+   restent sous 11 px à 64 px, la taille passe à `TAILLE_LISIBLE` (24,6) à condition
+   que CHAQUE ligne y tienne avec un resserrement d'au plus 15 %
+   (`RESSERREMENT_MAX`, `resserrementNecessaire`), sinon rien n'est resserré. Seules
+   les lignes qui déborderaient reçoivent `textLength="74"` et
+   `lengthAdjust="spacingAndGlyphs"` sur leur `tspan` ; les autres gardent leur
+   chasse. Fonction pure (largeurs estimées, marge de 2 % comprise) :
+   - `SOBENCHIR` → `SOBE / NCHIR` : taille 21 → 24,6, capitales 9,41 → 11,02 px,
+     `NCHIR` resserré de 14,3 %, `SOBE` intact ;
+   - `ZTESTMMW` → `ZTEST / MMW` : 22,2 → 24,6, 9,95 → 11,02 px, `ZTEST` 9,6 %,
+     `MMW` intact ;
+   - `ABMHEPAT` → `ABMH / EPAT` : environ 10,3 → 11,02 px, `ABMH` 6,9 % ;
+   - `MMWWMMWW` inchangé (taille 18,5, 8,29 px : il faudrait 25 %) ; les dix-sept
+     sigles courants des tests inchangés, sans resserrement.
+
+   Mesuré dans Chrome sur la carte de 64 px (organisation `[TEST]` publiée
+   temporaire, sigle `SOBENCHIR`, supprimée ensuite), à 360 et 1280 px, ×1 et ×3 :
+   avant, taille 21, capitales 9,41 px, aucun `textLength` ; après, taille 24,6,
+   capitales 11,02 px ; `NCHIR` : `textLength="74"`, largeur naturelle 84,66, rendue
+   74,64 (resserrement réel 11,8 %), de x = 13 à 87,6 dans le cadre intérieur
+   (de 8 à 92) ; `SOBE` : sans `textLength`, 68,5 de large. Témoins identiques avant et
+   après : `SBAGRO` (taille 25, 11,2 px, sans `textLength`) et `SBMI` (27,9,
+   12,5 px). Aucun défilement horizontal. Fiche à 360 px (monogramme de 80 px) :
+   même disposition, `textLength` sur `NCHIR` seul. Captures regardées (carte
+   `SOBENCHIR` et carte `SBAGRO` à 360 et 1280 px, monogramme seul à ×6) : `NCHIR` se
+   lit comme une chasse un peu plus étroite, sans déformation grossière des lettres,
+   et la hauteur gagnée se voit nettement à côté de la capture d'avant. Tests
+   (`monogramme.test.ts`) : `ZTESTMMW` et `SOBENCHIR` réécrits avec ces valeurs ;
+   nouveaux : `ABMH / EPAT` resserré, `MMWWMMWW` non resserré, et resserrement borné
+   (hors taille minimale, toute ligne resserrée l'est de 15 % au plus, et seulement à
+   `TAILLE_LISIBLE`).
+
+2. **Journal de la passerelle : délai d'écriture dépassé**
+   (`src/lib/passerelle/donnees.ts`, `src/lib/passerelle/passerelle.ts`). Le délai
+   de 2 s (`DELAI_MAX_ENREGISTREMENT_MS`) coupe l'attente, pas la transaction : la
+   ligne peut être insérée quand même. `enregistrerClic` renvoie une issue
+   (`enregistre`, `delai_depasse`, `erreur`) ; le délai est reconnu à son propre
+   signal (`signal.aborted`), et non au texte de l'erreur. Vérifié avec supabase-js
+   2.117.2 contre un serveur local qui accepte la connexion sans jamais répondre :
+   l'interruption est RENVOYÉE (pas levée), `status` 0, `code` vide, message
+   « TimeoutError: The operation was aborted due to timeout » (un test sur
+   « AbortError » aurait donc échoué). Journal :
+   - délai :
+     `[passerelle] Clic (societe) : délai d'écriture dépassé (2000 ms), enregistrement non confirmé` ;
+   - erreur renvoyée par l'API avant le délai : inchangé,
+     `[passerelle] Clic non enregistré (societe) : 23514 — …` ;
+   - exception (client de service impossible à créer, réseau avant le délai) :
+     `Clic non enregistré`.
+
+   Aucune donnée de la requête (URL, chemin, slug) dans ces messages. Tests
+   (`passerelle.test.ts`) : le faux client garde le signal reçu ; deux cas de délai
+   RÉEL (il attend le déclenchement de l'`AbortSignal.timeout` de 2 s, puis renvoie
+   l'erreur comme supabase-js, ou la lève) → 302, aucune ligne, message exact, sans
+   « non enregistré » ni l'URL ; erreur renvoyée et exceptions : message exact
+   « Clic non enregistré ».
+
+3. **Contour de focus sans transition** (`src/app/globals.css`,
+   `src/components/mise-en-page/Bouton.tsx`, `src/components/societes/CarteSociete.tsx`,
+   `src/components/evenements/CarteEvenement.tsx`,
+   `src/components/societes/annuaire/PaginationAnnuaire.tsx`). `transition-colors`
+   de Tailwind 4 anime aussi `outline-color` : le contour or passait 150 ms par des
+   teintes brunes. Nouveau jeton `--transition-property-teintes` (`@theme`), qui
+   donne la classe `transition-teintes` : `color`, `background-color`, `border-color`,
+   `text-decoration-color`, `fill`, `stroke`, même courbe et même durée que
+   `transition-colors`. Il remplace `transition-colors` à ses quatre emplois ; plus
+   aucun `transition-colors` sous `src/` (restent deux `transition-transform`, lien
+   d'évitement et chevron des événements passés, sans `outline-color`). CSS compilé :
+   `.transition-teintes{transition-property:var(--transition-property-teintes);…}`,
+   `motion-reduce:transition-none` inchangé ; aucune règle portée par un élément
+   n'anime `outline-color` (`.transition` et `.transition-colors` restent générées,
+   parce que leurs noms figurent dans ce fichier et dans un commentaire de
+   `globals.css`, mais aucun élément ne porte ces classes).
+   Mesuré dans Chrome à 1280 px, focus par Tab, couleur du contour lue au focus, à la
+   première image, à +50 ms et à +300 ms. Avant : carte d'organisation
+   `rgb(42, 26, 28)` (encre) puis `rgb(141, 109, 49)` à +50 ms ; bouton « Site
+   officiel » `rgb(247, 241, 227)` (crème) puis `rgb(218, 197, 150)` ; carte
+   d'événement encre et numéro de pagination bordeaux à la première image. Après :
+   `rgb(184, 145, 58)` (or) dès le focus et à la première image sur ces quatre
+   éléments (carte d'organisation, bouton « Site officiel », carte d'événement,
+   numéro de pagination), aucune transition en cours sur `outline-color`. Témoin : le
+   bouton « Lancer la recherche » (sans transition) était déjà or dès le focus, avant
+   comme après.
+
+4. **Décisions consignées** : 404 d'une fiche et préchargements (« Décisions »),
+   correction de la 404 inscrite en phase 5 (« Reste à faire »), « À valider par le
+   porteur (phase 2) » mis à jour.
+
+### Décisions
+
+- **Annuaire filtré en mémoire** : la liste complète des organisations publiées est
+  lue une fois (cache, clé = date du jour) puis filtrée, triée et paginée par
+  `utils/annuaire.ts` (seul `Intl.Collator("fr")` garantit le tri français ; filtre
+  ville sur `slugifier(ville)`). Au-delà de 1 000 organisations publiées (plafond
+  PostgREST par défaut), il faudra paginer côté base.
+- **Filtres** : valeur inconnue ignorée sans erreur, recherche de moins de 2
+  caractères ignorée, coupée à 100 ; `resultat.filtres` (filtres réellement
+  appliqués) sert au formulaire, au résumé et à la pagination.
+- **Canonique de l'annuaire** : toujours `/societes` ; variantes filtrées et pages 2 et
+  suivantes en `noindex, follow`, décidé sur l'URL seule.
+- **Pas de `loading.tsx` sous `app/societes/`**, ni de `<Suspense>` au-dessus des
+  pages : sinon la redirection de page ne serait plus une vraie 307 et une fiche
+  inexistante ne renverrait plus un vrai statut 404.
+- **Filtres non repliés sur mobile** (pas de `<details>`) : outil principal de la page ;
+  en contrepartie les cartes commencent plus bas à 360 px (à juger par le porteur).
+- **Focus** : Next 16 fait défiler jusqu'à l'ancre `#resultats` mais ne déplace plus
+  le focus ; `FocusResultats` le place sur le titre de la liste après un changement de
+  page à filtres identiques. Next ne remonte pas la page quand seuls les paramètres de
+  l'URL changent : le formulaire recopie les filtres appliqués dans ses champs.
+- **Fiche** : slug exact exigé (`/societes/DEMO-SBMI` donne 404, sans redirection) ;
+  `generateMetadata` et la page partagent une seule lecture (`cache` de React) ;
+  titre « SIGLE — Nom complet », description de 160 caractères au plus (comptés en
+  graphèmes). La fiche n'est lue, et mise en cache, que si son slug figure dans la
+  liste en cache des organisations publiées ; sinon `null`, sans entrée de cache.
+  Seule la page lève `notFound()` ; `generateMetadata` renvoie les métadonnées de la
+  page introuvable.
+- **Compteurs et listes d'événements d'une organisation** : organisateur et
+  co-organisateur seulement, partenaires exclus.
+- **Passerelle** : `vers` ne choisit qu'une colonne dans une liste fermée, l'URL vient
+  toujours de la base ; lien non `https://` sûr → 404 ; lecture impossible → 503
+  (journalisé, sans clic) ; échec d'écriture du clic → journalisé, la redirection
+  part quand même ; délai d'écriture dépassé (2 s) → journalisé à part,
+  « enregistrement non confirmé » (le délai coupe l'attente, pas la transaction),
+  reconnu au signal et non au texte de l'erreur, alors qu'une erreur renvoyée par
+  l'API reste « Clic non enregistré » ; `page_origine` = chemin seul, décodé, paramètres et fragment
+  retirés, et seulement s'il désigne une page publique connue (`lirePageOrigine`,
+  liste fermée) : une page fixe (`/`, `/societes`, `/agenda`, `/echeances`,
+  `/recherche`, valeurs fixes) ou une fiche d'organisation PUBLIÉE (`/societes/{slug}`,
+  slug vérifié dans la liste en cache des organisations publiées) ; sinon `null`.
+  Aucune saisie du visiteur n'est donc enregistrée : seules des valeurs fixes ou le
+  slug d'une fiche publiée. `/agenda/{slug}` et `/disciplines/{slug}` donnent `null`
+  jusqu'aux phases 3 et 4, qui les ajouteront à `RUBRIQUES_ORIGINE_A_SLUG` avec la
+  lecture de leurs slugs publiés. Cette vérification n'est faite que pour un clic
+  compté, avant la redirection, sur la liste en cache que la fiche vient de lire :
+  pas de délai mesurable, donc pas de délai maximal comme pour `lireDestination` ;
+  `url` enregistrée = URL finale avec les UTM ;
+  `HEAD`, en-têtes `RSC` / `Next-Router-Prefetch` et préchargements du navigateur
+  reçoivent la redirection mais ne sont pas comptés. Lecture non mise en cache
+  (l'identifiant vient du visiteur).
+- **UTM** : chacun des deux paramètres n'est ajouté que s'il manque
+  (`?utm_source=lettre` reçoit seulement `utm_medium`).
+- **Règle d'import** : un fichier `"use client"` n'importe jamais `@/lib/requetes/`,
+  même en `import type` (`securite.test.ts` regarde le chemin) ; les types et
+  fonctions pures des composants clients viennent de `@/lib/utils/`.
+- **Variables d'environnement facultatives vides** (correction de la phase 2) : vides
+  ou faites d'espaces, elles valent « absentes » (`null`) ; un `.env.local` copié de
+  `.env.example` est accepté tel quel. Les variables requises vides restent refusées.
+- **Durée de validité du cache : 5 minutes** (arbitrage du coordinateur) :
+  `revalidate: DUREE_VALIDITE_CACHE` (300 s) sur chaque `unstable_cache` de
+  `src/lib/requetes/`, en plus des étiquettes. Les server actions invalident toujours
+  immédiatement ; la durée ne sert qu'aux écritures faites hors server action
+  (éditeur SQL, tableau de bord Supabase), qui apparaissent au plus tard à la deuxième
+  visite après 5 minutes (relecture en arrière-plan). Utile dès maintenant : jusqu'aux
+  phases 5 et 6, publier ou corriger une fiche se fait en SQL, et le parcours 2 de la
+  phase 5 prévoit une action SQL de modération.
+- **Recherche texte de l'annuaire non mise en cache** (choix demandé : « pas de cache,
+  ou durée courte ») : pas de cache. Le texte vient du visiteur : chaque saisie
+  créerait une entrée persistante, et une durée courte la ferait expirer sans la
+  supprimer (en auto-hébergement, le fichier reste dans `.next/cache/fetch-cache`).
+  Varier la saisie contournerait de toute façon le cache, qui ne protégerait donc pas
+  la base. Coût : une requête indexée (GIN, trigrammes) par affichage filtré par texte ;
+  la liste complète reste en cache. Même raisonnement que la passerelle. Exception à
+  la règle de rendu, consignée dans la décision 20. La normalisation `cleRecherche`
+  (casse, espaces, NFC ; accents gardés) n'a donc plus d'effet sur le cache : elle
+  rend seulement la requête envoyée déterministe, et servirait de clé si un cache
+  était un jour réintroduit.
+- **Fil d'Ariane visible et JSON-LD `BreadcrumbList` conservés** (arbitrage du
+  coordinateur) : prévus par la section 15 (« JSON-LD `Organization`, `Event`,
+  `BreadcrumbList` ») et par le point 2 du prompt de la phase 7, ils sont livrés en
+  avance sur la fiche ; la phase 7 n'aura qu'à les étendre aux autres pages. Les
+  champs JSON-LD au-delà du minimum (`@id`, `sameAs` sans WhatsApp, `email`,
+  `telephone`, `description`, `addressCountry: BJ`) sont conservés aussi.
+- **Slug d'un sigle collé** (arbitrage, section 7 : « sigle en minuscules ») :
+  points, apostrophes et espaces retirés (`S.B.C.` et `S B C` → `sbc`), tiret gardé.
+  Effet visible : `UAC FSS` donne désormais `uacfss` (et non plus `uac-fss`).
+  `slugSigle` est partagé avec `slugEvenement`, pour que la fiche et les événements
+  écrivent le sigle de la même façon (`/societes/sbc`, `congres-sbc-2027`).
+- **Badge d'échéance urgente** (arbitrage) : texte `encre` sur fond `or` (« badge
+  or », section 7), 5,66:1, conforme AA ; distinct du badge de type (bordeaux sur
+  or clair).
+- **Monogramme : deux lignes empilées plutôt qu'un cartouche élargi** (arbitrage :
+  capitales d'au moins ~11 px sur la carte de 64 px, sigles jusqu'à 8 caractères).
+  À 64 px, une ligne ne peut porter que 4 capitales environ à 11 px (largeur de
+  texte : 74 unités sur 100) ; un cartouche élargi à 8 capitales aurait dû mesurer
+  environ 1,7 fois sa hauteur, donc une colonne de logo plus large sur toutes les
+  cartes et environ 45 px de texte en moins à 360 px ; réduire l'interlettrage ne
+  gagnait que quelques pour cent. Le sigle passe donc sur deux lignes dès qu'une
+  ligne donnerait des capitales de moins de 11 px (`TAILLE_LISIBLE`), coupé à un
+  espace ou un tiret, sinon là où les lignes s'équilibrent, première ligne la plus
+  courte (`SB / GEO`, `SBA / GRO`, `SOB / EPED`) : un cachet gravé, cohérent avec le
+  cartouche de plan. Même disposition à toutes les tailles (carte et fiche). Largeurs
+  des lettres MESURÉES sur la Fraunces 500 servie (`measureText` dans Chrome, plus
+  2 %), hauteur des capitales mesurée à 0,70 em.
+- **Monogramme : resserrement de 15 % au plus** (décision du coordinateur, 14 octobre
+  2026, option recommandée après la vérification complète) : quand la meilleure
+  disposition donne des capitales de moins de 11 px (`ABMH / EPAT` environ 10,3 px,
+  `ZTEST / MMW` 9,95 px, `SOBE / NCHIR` 9,41 px pour le sigle réel `SOBENCHIR` de
+  `seed.sql`), la taille passe à `TAILLE_LISIBLE` si chaque ligne y tient resserrée de
+  15 % au plus ; seules les lignes qui déborderaient sont resserrées (`textLength` sur
+  leur `tspan`). La hauteur des capitales compte plus pour la lecture à 64 px qu'une
+  chasse réduite d'environ 12 % (mesuré dans Chrome). Limite connue, testée : au-delà
+  de 15 %, rien n'est resserré (pire cas théorique `MMWWMMWW`, environ 8 px) ; un
+  sigle qui déborde même à la taille minimale reste compressé (`textLength`) pour
+  tenir dans le cartouche.
+- **404 d'une fiche vide sans JavaScript : acceptée pour la phase 2** (décision du
+  coordinateur, 14 octobre 2026). Limite de Next.js 16.3.6, confirmée dans
+  `node_modules/next/dist/server/app-render/app-render.js` : `getErrorRSCPayload`
+  (lignes 1322 à 1336) rend, pour une erreur levée pendant le rendu du shell, dont
+  `notFound()`, une charge d'erreur `<html id="__next_error__">` à `<head>` et
+  `<body>` vides, et c'est le client qui dessine la page introuvable. Expérience du
+  coordinateur : résultat identique sans `src/app/societes/error.tsx` ni
+  `src/app/societes/[slug]/not-found.tsx`. Statut 404, titre et `noindex` sont
+  corrects. À corriger en phase 5 dans `proxy.ts` (créé alors pour `/espace` et
+  `/admin`, spécifications section 6) : vérifier le slug de `/societes/{slug}` et
+  réécrire vers une page introuvable rendue côté serveur (« Reste à faire » ; options
+  et coûts dans « Corrections après la relecture adversariale », point 2).
+- **Préchargements `next/link` vers des pages pas encore construites : acceptés**
+  (décision du coordinateur, 14 octobre 2026). Ils donnent des 404 dans la console et
+  l'avertissement « Results may be incomplete » de Lighthouse ordinateur sur la fiche
+  (« Suites de la vérification complète », point 2) ; ils disparaissent au fil des
+  phases 3 à 5, qui créent ces pages, sans `prefetch={false}` à poser puis retirer.
+  D'ici là, auditer avec `--blocked-url-patterns=*_rsc=*` ; après la phase 5,
+  relancer Lighthouse ordinateur sans blocage.
+- **`transition-teintes` plutôt que `transition-colors`** (retouche du coordinateur) :
+  sur tout élément qui peut porter le contour de focus, la transition des couleurs
+  exclut `outline-color`, pour que le contour or apparaisse dès la première image
+  (jeton `--transition-property-teintes` de `globals.css`).
+- **`scripts/api-locale.mjs` commité** (arbitrage) : API Supabase locale sans Docker
+  pour vérifier les pages publiques sur des données réelles tant que le projet
+  distant n'existe pas (Docker Desktop ne démarre pas sur ce poste). Relais Node
+  (`node:http`, aucune dépendance) sur `http://127.0.0.1:54321` devant PostgREST
+  16.3, la version embarquée par le CLI Supabase 2.118 (mêmes requêtes, même RLS,
+  mêmes rôles `anon`, `authenticated`, `service_role` que Supabase) : `/rest/v1/*` →
+  PostgREST (port 54320), base `citesavante_api` de la grappe PostgreSQL locale (port
+  54390). Démarrage : `PG_DB=citesavante_api SANS_DEMO=0 bash scripts/valider-base.sh`
+  (base à jour avec `seed_demo.sql`), puis `node scripts/api-locale.mjs cles` une
+  fois, puis `node scripts/api-locale.mjs` (Ctrl+C pour arrêter). `cles` RÉÉCRIT
+  `.env.local` (le crée depuis `.env.example` s'il manque) : `NEXT_PUBLIC_SUPABASE_URL`,
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (jetons HS256 de
+  développement, 10 ans) et `API_LOCALE_JWT_SECRET` (secret aléatoire propre au poste,
+  gardé s'il existe) ; les autres lignes sont conservées, fins de ligne ramenées à LF.
+  Ces clés ne donnent accès qu'à la base locale. Le binaire PostgREST (et `libpq.dll`)
+  est HORS du dépôt : chemins par défaut propres à ce poste
+  (`C:/Users/agbot/Desktop/PROJETS/pgsql/postgrest/postgrest.exe`,
+  `C:/Users/agbot/Desktop/PROJETS/pgsql/pgsql/bin`), à surcharger ailleurs par `POSTGREST_BIN`
+  et `PG_BIN` (aussi `PG_HOST`, `PG_PORT`, `PG_DB`, `API_PORT`, `POSTGREST_PORT`). Non
+  couvert : authentification (`/auth/v1/*` → 501) et stockage
+  (`/storage/v1/*` → 404) ; les parcours connectés (phases 5 et 6) et les logos se
+  vérifieront avec Supabase local sous Docker ou le projet distant.
+
+### Points à vérifier sur données réelles
+
+Faits par la relecture adversariale puis par la correction (`seed_demo.sql`, API
+locale, `next start`) : statuts HTTP réels (404 des fiches inconnues, en majuscules,
+en brouillon ou en attente ; 200 ; 307 de la page hors limites ; 308 de la barre
+finale) ; passerelle (une ligne par clic avec le `.env.local` tel quel, aucune pour
+`HEAD` et les préchargements, rejets en 404 indiscernables, aucune redirection
+ouverte) ; filtres de l'annuaire avec et sans JavaScript ; 360 et 1280 px sans
+défilement horizontal (annuaire et fiche) ; classes Tailwind 4 compilées ; échappement
+du JSON-LD ; canonique, `robots` et Open Graph ; monogramme sans logo.
+
+**Lighthouse accessibilité ≥ 95** sur `/societes` et `/societes/demo-sbmi` : fait
+le 13 octobre 2026 (Lighthouse 13.5.0, Chrome sans interface), **100 sur les deux
+pages, en mobile et en ordinateur**, aucun audit en échec (détail dans
+« Vérifications (suites de la vérification complète) »). Seul l'audit ordinateur
+de la fiche porte l'avertissement « Results may be incomplete » (préchargements en
+404, « Suites de la vérification complète », point 2) ; relancé en bloquant
+`*_rsc=*`, il finit sans avertissement, avec le même score. Sur ce poste,
+`pnpm dlx lighthouse` échoue (module `configstore` introuvable) :
+`pnpm --config.node-linker=hoisted dlx lighthouse@13.5.0 …` fonctionne, mais coûte
+environ 4 min d'installation et 5 à 7 min de chargement des modules à chaque
+lancement ; cinq des six audits ont donc été lancés dans un seul processus Node,
+par l'API de Lighthouse (`lighthouse/core/index.js` et `chrome-launcher` de cette
+même installation, `desktopConfig` pour l'ordinateur).
+
+Restent à faire :
+
+1. **JSON-LD** de la fiche passé à l'outil de test des résultats enrichis (en ligne).
+2. **Logos** : l'API locale ne sert pas le stockage (404 sur `/storage/v1/…`) ; le
+   chemin `next/image` (motifs distants, `dangerouslyAllowLocalIP`) ne sera vérifiable
+   qu'avec Supabase local sous Docker ou le projet distant.
+3. **404 d'une fiche sans JavaScript** : à revérifier en phase 5, après la correction
+   dans `proxy.ts` (« Décisions »).
+
+### À valider par le porteur (phase 2)
+
+- **Page 404 d'une fiche vide sans JavaScript** (acceptée pour la phase 2 par le
+  coordinateur, NON bloquante ; correction prévue en phase 5 dans `proxy.ts`, voir
+  « Décisions » et « Reste à faire ») : statut 404, titre « Organisation
+  introuvable » et `noindex` corrects ; sans JavaScript, corps vide (page blanche
+  pendant l'attente du JavaScript, sensible en 3G). À confirmer par le porteur.
+- **Monogramme** (choix faits selon les arbitrages, à regarder) : deux lignes
+  empilées (`SB / GEO`, `SBA / GRO`) sur les cartes et l'en-tête de fiche ; pour les
+  sigles les plus larges, une ligne resserrée de 15 % au plus (`SOBENCHIR` :
+  `NCHIR` resserré d'environ 12 % à l'écran, capitales de 11 px au lieu de 9,4 px).
+  À regarder sur la fiche `SOBENCHIR` quand elle sera publiée (encore en brouillon).
+- **Panneau de filtres non replié à 360 px** : les premières cartes commencent vers
+  1,7 hauteur d'écran (mesure de la relecture).
+- **Slug d'un événement de type « autre »** : `titre-annee`, même avec un organisateur.
+- **Convention `logo_path`** : chemin relatif au bucket (`{id}/{horodatage}.webp`),
+  préfixe `logos/` toléré ; à respecter par les envois de la phase 5.
+- **Lecture impossible → 503** sur la passerelle (et non 404).
+- **Gonflement des compteurs** : sans IP (voulu par la section 15), rien n'empêche de
+  répéter les requêtes vers `/go` ; limite connue.
+- **Liens vers des pages pas encore construites** (acceptés par le coordinateur, NON
+  bloquants, voir « Décisions ») : disciplines (`/disciplines/…`, phase 4), agenda
+  (`/agenda/…`, phase 3), référencement (`/referencer/…`, phase 5), « Gérer cette
+  fiche » (`/espace/reclamer/…`, phase 5) mènent à la page 404 du site jusqu'à leur
+  phase, comme les liens de l'en-tête depuis la phase 0 ; leurs préchargements
+  (`next/link`) donnent des 404 dans la console (27 sur quatre pages, vérification
+  complète, point 2) jusqu'aux phases 3 à 5.
+
+### Vérifications (intégration)
+
+Le 7 octobre 2026, dans cet ordre, après les corrections d'intégration :
+
+- **`pnpm typecheck`** (`tsc --noEmit`) : code 0, aucune erreur.
+- **`pnpm test`** (`vitest run`) : code 0, **21 fichiers, 431 tests, tous passés**
+  (296 s). `src/lib/passerelle/analyse.test.ts`, retouché pendant cette exécution
+  (caractère de contrôle de direction écrit en échappement `\u202e` au lieu d'être
+  tapé tel quel), relancé seul ensuite : 83 tests passés, code 0.
+- **`pnpm build` avec `.env.local`** (API locale) : code 0 (« Environments:
+  .env.local ») ; `/societes`, `/societes/[slug]` et `/go/[type]/[id]` en `ƒ`
+  (dynamiques, jamais rendues au build) ; `/`, `/_not-found`, `/charte`, `/icon.svg`
+  en `○`.
+- **`pnpm build` sans `.env.local`** (renommé le temps du build, puis remis ; empreinte
+  SHA-256 identique avant et après ; aucune variable Supabase dans l'environnement du
+  shell) : code 0, même tableau des routes.
+- **`pnpm lint`** (`eslint .`) : code 0, 0 erreur, 0 avertissement.
+- **`pnpm exec prettier --check`** sur les 59 fichiers de la phase (code, tests,
+  `next.config.ts`, `PROGRESS.md`) : code 0.
+- Fins de ligne LF partout (aucun `\r` sous `src/` ni dans `PROGRESS.md`).
+- Non vérifiable à cette étape (aucune page ouverte dans un navigateur) : voir « Points
+  à vérifier sur données réelles ».
+
+### Vérifications (correction après la relecture adversariale)
+
+Le 13 octobre 2026, dans cet ordre, après les corrections :
+
+- **`pnpm typecheck`** : code 0, aucune erreur.
+- **`pnpm test`** : code 0, **22 fichiers, 504 tests, tous passés** (nouveau fichier :
+  `src/lib/cache.test.ts`).
+- **`pnpm build` avec `.env.local`** : code 0 (« Environments: .env.local ») ;
+  `/societes`, `/societes/[slug]` et `/go/[type]/[id]` en `ƒ` ; `/`, `/_not-found`,
+  `/charte`, `/icon.svg` en `○`.
+- **`pnpm build` sans `.env.local`** (renommé le temps du build puis remis, empreinte
+  SHA-256 identique, aucune variable Supabase dans l'environnement) : code 0, même
+  tableau des routes.
+- **`pnpm lint`** : code 0, 0 erreur, 0 avertissement.
+- **`pnpm exec prettier --check`** sur les 28 fichiers modifiés ou créés (dont
+  `scripts/api-locale.mjs` et `PROGRESS.md`) : code 0 ; aucun octet CR.
+- **`PG_DB=citesavante_corr bash scripts/valider-base.sh`** : « VALIDATION RÉUSSIE »,
+  7 migrations rejouées sans erreur, `seed.sql` et `seed_demo.sql` chargés, 6 fichiers,
+  466 vérifications, 0 échec (base jetable supprimée ensuite).
+- Sur `next start -p 3104` avec le `.env.local` tel quel (serveur arrêté ensuite) :
+  preuves des points 1 à 4, 6, 9, 11 et 12 de « Corrections après la relecture
+  adversariale » ; base `citesavante_api` laissée sans donnée de test
+  (`clics_sortants` vide).
+
+### Vérifications (suites de la vérification complète)
+
+Le 13 octobre 2026, dans cet ordre, après la correction de `page_origine` et les
+tests du monogramme :
+
+- **`pnpm typecheck`** : code 0, aucune erreur.
+- **`pnpm test`** : code 0, **22 fichiers, 518 tests, tous passés** (504 + 14 :
+  11 dans `passerelle.test.ts`, 3 dans `monogramme.test.ts` ; `analyse.test.ts` à
+  nombre égal).
+- **`pnpm build` sans `.env.local`** (renommé le temps du build puis remis, empreinte
+  SHA-256 identique avant et après, aucune variable Supabase dans l'environnement) :
+  code 0 ; `/`, `/_not-found`, `/charte`, `/icon.svg` en `○` ; `/go/[type]/[id]`,
+  `/societes`, `/societes/[slug]` en `ƒ`.
+- **`pnpm build` avec `.env.local`** (« Environments: .env.local ») : code 0, même
+  tableau des routes. Build gardé pour les parcours ci-dessous.
+- **`pnpm lint`** : code 0, 0 erreur, 0 avertissement.
+- **`pnpm exec prettier --check`** sur les 9 fichiers modifiés (`urls.ts`,
+  `analyse.ts`, `analyse.test.ts`, `passerelle.ts`, `passerelle.test.ts`,
+  `requetes/societes.ts`, `go/[type]/[id]/route.ts`, `monogramme.test.ts`,
+  `PROGRESS.md`) : code 0 ; fins de ligne LF.
+- Parcours rejoués sur `next start -p 3106` (`.env.local` tel quel, API locale ;
+  serveur arrêté ensuite) :
+  - **Passerelle, `page_origine`** (point 3) : sept GET sur
+    `/go/societe/de110000-…-0001?vers=site&from=…`, tous 302 vers
+    `https://example.org/sbmi?utm_source=citesavante&utm_medium=referral` ; lignes
+    créées : `page_origine` NUL pour `/agenda/jean-dupont-exemple-org-0100000000`,
+    `/societes/n-importe-quoi`, `/societes/sobeped` (brouillon), `/societes/demo-iehp`
+    (en attente) et `/disciplines/sante` ; `/societes/demo-sbmi` (publiée) et
+    `/societes` gardés ; un HEAD : 302, aucune ligne ; aucun message `[passerelle]`
+    dans le journal du serveur. Les 7 lignes supprimées : `clics_sortants` revenu à 0.
+  - **404 d'une fiche** (point 1, non corrigé) : inchangé, comme attendu. Sans
+    JavaScript, les cinq adresses du constat → 404, titre et `noindex` justes,
+    `<html id="__next_error__">`, aucun `h1`, corps vide ; `/page-inexistante` → 404,
+    `<html lang="fr">`, un `h1`. Avec JavaScript (Chrome) : `/societes/inexistant` et
+    `/societes/sobeped` → 404, `lang="fr"`, `h1` « Organisation introuvable ».
+  - **Préchargements** (point 2, non corrigé) : inchangé, comme attendu. Chrome, `/`,
+    `/societes`, `/societes/demo-sbmi`, `/societes/demo-abde` : 27 réponses 404, 27
+    erreurs console, 27 requêtes `?_rsc=` encore ouvertes 6 s après `load`, aucune
+    autre.
+  - **Lighthouse 13.5.0** (accessibilité, Chrome sans interface) : `/societes`
+    ordinateur 100 (29,1 s, sans avertissement), ordinateur avec `*_rsc=*` bloqué 100
+    (22,7 s), mobile 100 (34,4 s) ; `/societes/demo-sbmi` ordinateur 100 (61,1 s,
+    « The page loaded too slowly to finish within the time limit. Results may be
+    incomplete. »), ordinateur avec `*_rsc=*` bloqué 100 (19,3 s, sans avertissement),
+    mobile 100 (21,5 s). Aucun audit d'accessibilité en échec. Rapports JSON gardés
+    hors du dépôt.
+  - **Monogramme** (point 4) : fonction pure, `ZTESTMMW` → `ZTEST / MMW`, 9,95 px ;
+    `SOBENCHIR` → `SOBE / NCHIR`, 9,41 px ; `MMWW` → `MM / WW`, 11,2 px ; autres
+    sigles de la base de 11,2 à 14,3 px.
+
+### Vérifications (retouches du coordinateur)
+
+Le 14 octobre 2026, dans cet ordre, après les retouches :
+
+- **`pnpm typecheck`** : code 0, aucune erreur.
+- **`pnpm test`** : code 0, **22 fichiers, 522 tests, tous passés** (518 + 4 : 2 dans
+  `monogramme.test.ts`, 2 dans `passerelle.test.ts`).
+- **`pnpm build` avec `.env.local`** (« Environments: .env.local ») : code 0 ; `/`,
+  `/_not-found`, `/charte`, `/icon.svg` en `○` ; `/go/[type]/[id]`, `/societes`,
+  `/societes/[slug]` en `ƒ`. Build gardé pour les mesures de « Retouches du
+  coordinateur » (serveur `next start -p 3107` arrêté ensuite ; organisation
+  `[TEST]` supprimée : `societes` revenu à 15 lignes dont 8 publiées,
+  `clics_sortants` à 0).
+- **`pnpm build` sans `.env.local`** (renommé le temps du build puis remis, empreinte
+  SHA-256 identique avant et après, aucune variable Supabase dans l'environnement) :
+  code 0, sans ligne « Environments », même tableau des routes.
+- **`pnpm lint`** : code 0, 0 erreur, 0 avertissement.
+- **`pnpm exec prettier --check`** sur les 12 fichiers modifiés (`monogramme.ts`,
+  `monogramme.test.ts`, `Monogramme.tsx`, `donnees.ts`, `passerelle.ts`,
+  `passerelle.test.ts`, `globals.css`, `Bouton.tsx`, `CarteSociete.tsx`,
+  `CarteEvenement.tsx`, `PaginationAnnuaire.tsx`, `PROGRESS.md`) : code 0 ; fins de
+  ligne LF.
+
 ## Reste à faire
 
 - Phase 0 : vérification visuelle de `/` et `/charte` à 360 px et 1280 px par le
@@ -1432,12 +2219,36 @@ Choix restant à trancher ou à confirmer :
   projet distant », étapes 1 à 7), puis les trois contrôles « sur le vrai projet » de
   « À valider par le porteur (phase 1) ».
 - Phase 1 : trancher les choix restants de « À valider par le porteur (phase 1) ».
-- Phases 2 à 7 et évolutions P1 (voir `docs/PROMPTS.md`).
+- Phase 2 : les « Points à vérifier sur données réelles » restants (JSON-LD en
+  ligne, logos). Lighthouse (accessibilité ≥ 95) : fait, 100 sur les deux pages.
+- Phase 2 : faire confirmer par le porteur « À valider par le porteur (phase 2) »
+  (rien de bloquant).
+- Phase 5 : **404 d'une fiche rendue côté serveur** (décision du coordinateur du
+  14 octobre 2026, voir « Décisions »). Dans `proxy.ts`, créé en phase 5 pour
+  `/espace` et `/admin` (spécifications, section 6) : vérifier le slug de
+  `/societes/{slug}` et réécrire vers une page introuvable rendue côté serveur. Piste
+  recommandée : une route statique réservée (`/societes/introuvable`, texte
+  « Organisation introuvable » et bouton « Consulter l'annuaire », slug `introuvable`
+  interdit aux organisations par contrainte ou validation des formulaires) plutôt
+  que la 404 générale ; ne vérifier que les requêtes de document (sans en-tête
+  `RSC` : une navigation dans le site rend déjà la page introuvable côté client), par
+  une lecture d'une ligne sur l'index unique du slug (le proxy ne peut pas compter sur
+  `unstable_cache`) ; vérifier qu'un module `server-only` de `src/lib/requetes/` peut
+  être importé par le proxy. Puis revérifier sans JavaScript les cinq adresses de la
+  vérification complète (point 1).
+- Après la phase 5 : relancer Lighthouse ordinateur sur la fiche sans bloquer
+  `*_rsc=*`, pour confirmer que les préchargements en 404 ont disparu.
+- Phase 7 : `robots.ts` doit interdire `/go` (section 15) ; d'ici là, chaque réponse
+  de la passerelle porte déjà `X-Robots-Tag: noindex`.
+- Phases 3 à 7 et évolutions P1 (voir `docs/PROMPTS.md`).
 
 ## Décisions
 
 - Projet déplacé dans `C:/Users/agbot/Desktop/cite-savante` : `pnpm install` échouait
-  (EPERM) dans un chemin contenant un « é » (`Cité Savante`).
+  (EPERM) dans un chemin contenant un « é » (`Cité Savante`). Le 17/10/2026, le porteur
+  l'a rangé dans `C:/Users/agbot/Desktop/PROJETS/cite-savante`, et PostgreSQL portable
+  (binaires, grappe `data_citesavante`, PostgREST) dans `C:/Users/agbot/Desktop/PROJETS/pgsql` :
+  les chemins par défaut des scripts suivent.
 - Polices auto-hébergées via `@fontsource/fraunces` et `@fontsource/eb-garamond` plutôt
   que des fichiers de police déposés à la main : versions figées, sous-ensemble latin
   déjà séparé par fichier, et les `.woff` (non `.woff2`) des mêmes paquets serviront en

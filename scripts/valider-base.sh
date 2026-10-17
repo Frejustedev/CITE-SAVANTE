@@ -20,7 +20,7 @@
 #
 # Variables (toutes facultatives) :
 #   PG_BIN     dossier des binaires PostgreSQL
-#              (défaut : C:/Users/agbot/Desktop/pgsql/pgsql/bin)
+#              (défaut : C:/Users/agbot/Desktop/PROJETS/pgsql/pgsql/bin)
 #   PG_HOST    hôte (défaut : localhost)
 #   PG_PORT    port de la grappe (défaut : 54390)
 #   PG_USER    super-utilisateur de la grappe (défaut : postgres)
@@ -36,7 +36,7 @@
 # =============================================================================
 set -euo pipefail
 
-PG_BIN="${PG_BIN:-C:/Users/agbot/Desktop/pgsql/pgsql/bin}"
+PG_BIN="${PG_BIN:-C:/Users/agbot/Desktop/PROJETS/pgsql/pgsql/bin}"
 PG_HOST="${PG_HOST:-localhost}"
 PG_PORT="${PG_PORT:-54390}"
 PG_USER="${PG_USER:-postgres}"
@@ -89,8 +89,8 @@ if ! "$PG_ISREADY" -q -h "$PG_HOST" -p "$PG_PORT" > /dev/null 2>&1; then
   cat >&2 << EOF
 ERREUR : la grappe PostgreSQL ne répond pas sur $PG_HOST:$PG_PORT.
 Pour la grappe du projet, la démarrer avec :
-  "$PG_BIN/pg_ctl.exe" -D C:/Users/agbot/Desktop/pgsql/data_citesavante \\
-    -l C:/Users/agbot/Desktop/pgsql/data_citesavante.server.log -o "-p $PG_PORT" -w start > /dev/null 2>&1
+  "$PG_BIN/pg_ctl.exe" -D C:/Users/agbot/Desktop/PROJETS/pgsql/data_citesavante \\
+    -l C:/Users/agbot/Desktop/PROJETS/pgsql/data_citesavante.server.log -o "-p $PG_PORT" -w start > /dev/null 2>&1
 EOF
   exit 1
 fi

@@ -41,6 +41,18 @@
   --inset-shadow-*: initial;
   --drop-shadow-*: initial;
   --text-shadow-*: initial;
+
+  /*
+   * Transition des couleurs SANS `outline-color` : classe `transition-teintes`,
+   * à employer à la place de `transition-colors` (qui anime aussi
+   * `outline-color`) sur tout élément qui peut recevoir le contour de focus.
+   * Sinon le contour or passe, pendant la durée de la transition, par des
+   * teintes brunes intermédiaires (depuis `currentColor`) au lieu d'apparaître
+   * aussitôt. Même courbe et même durée que `transition-colors` (`duration-*`,
+   * `ease-*` et `motion-reduce:transition-none` s'appliquent pareil).
+   */
+  --transition-property-teintes:
+    color, background-color, border-color, text-decoration-color, fill, stroke;
 }
 
 /*

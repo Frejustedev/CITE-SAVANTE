@@ -91,7 +91,13 @@ export const couplesUtilises: CoupleCouleurs[] = [
     premierPlan: "creme",
     fond: "bordeaux",
     nature: "texte",
-    usage: "Bouton principal, badge « urgent », lien d'évitement",
+    usage: "Bouton principal, lien d'évitement",
+  },
+  {
+    premierPlan: "encre",
+    fond: "or",
+    nature: "texte",
+    usage: "Badge « urgent » des échéances à 7 jours ou moins (« badge or », section 7)",
   },
   {
     premierPlan: "creme",

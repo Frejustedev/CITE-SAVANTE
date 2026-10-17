@@ -21,7 +21,7 @@ type BoutonNatifProps = ProprietesCommunes &
 export type BoutonProps = BoutonLienProps | BoutonNatifProps;
 
 const classesCommunes =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-[6px] border px-5 py-2 text-center font-texte text-base leading-tight font-medium no-underline transition-colors duration-150 motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-[6px] border px-5 py-2 text-center font-texte text-base leading-tight font-medium no-underline transition-teintes duration-150 motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-60";
 
 const classesVariantes: Record<VarianteBouton, string> = {
   principal:

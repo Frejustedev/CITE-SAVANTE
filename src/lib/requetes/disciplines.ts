@@ -10,10 +10,12 @@ import "server-only";
 // avec `unstable_cache`, étiqueté `disciplines`, invalidé par
 // `invalider(ETIQUETTES.DISCIPLINES)` depuis la server action qui écrit sur
 // cette table : l'écran « Disciplines » du back-office, réservé aux
-// administrateurs (phase 6, spécifications section 13). Aucune avant.
+// administrateurs (phase 6, spécifications section 13). Aucune avant ; d'ici
+// là, une modification faite en SQL apparaît au plus tard après la durée de
+// validité du cache (`DUREE_VALIDITE_CACHE`, 5 minutes).
 import { unstable_cache } from "next/cache";
 
-import { ETIQUETTES } from "@/lib/cache";
+import { DUREE_VALIDITE_CACHE, ETIQUETTES } from "@/lib/cache";
 import { creerClientPublic } from "@/lib/supabase/public";
 import type { Tables } from "@/lib/supabase/types";
 
@@ -24,7 +26,10 @@ const listerDisciplinesEnCache = unstable_cache(
     const supabase = creerClientPublic();
     const { data, error } = await supabase
       .from("disciplines")
-      .select("*")
+      // Colonnes listées, jamais `select("*")` (règle commune à toutes les
+      // lectures, PROGRESS.md, relecture sécurité phase 1) : les six colonnes
+      // de la table, donc la forme de `Tables<"disciplines">`.
+      .select("id, slug, nom, description, ordre, created_at")
       .order("ordre", { ascending: true });
 
     if (error) {
@@ -33,7 +38,7 @@ const listerDisciplinesEnCache = unstable_cache(
     return data;
   },
   ["requetes/disciplines/lister-disciplines"],
-  { tags: [ETIQUETTES.DISCIPLINES] },
+  { tags: [ETIQUETTES.DISCIPLINES], revalidate: DUREE_VALIDITE_CACHE },
 );
 
 /** Toutes les disciplines, triées par `ordre` (spécifications, section 9.2). */

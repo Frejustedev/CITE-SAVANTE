@@ -1,10 +1,11 @@
 import "server-only";
 
-// Lecture publique : les événements à venir (agenda, spécifications section
-// 8.3). Filtre EXPLICITE sur `statut = 'publie'` (CLAUDE.md, section 6),
-// « à venir » = `date_fin >= aujourd'hui à Porto-Novo` (et non un événement
-// déjà terminé), triés par `date_debut`, avec leurs organisateurs et leur
-// prochaine échéance (celle dont la date limite n'est pas encore passée).
+// Lectures publiques des événements : agenda (spécifications section 8.3) et
+// événements d'une organisation (fiche organisation, section 8.2). Filtre
+// EXPLICITE sur `statut = 'publie'` (CLAUDE.md, section 6). « À venir » =
+// `date_fin >= aujourd'hui à Porto-Novo` (section 7). Conversion des lignes,
+// tri et séparation à venir / passés : `src/lib/utils/evenements.ts`
+// (fonctions pures, testées).
 //
 // « Aujourd'hui » est calculé par l'APPELANT (`aujourdhuiPortoNovo()`, hors
 // du périmètre mis en cache) et passé en ARGUMENT à la fonction mise en
@@ -23,9 +24,17 @@ import "server-only";
 // conversion ignore tout rattachement dont `societes` serait nul : la RLS
 // masque à `anon` une organisatrice non publiée (en attente, archivée…) et
 // PostgREST renvoie alors `null` à sa place, alors que le type généré la dit
-// non nulle — sans cette garde, `rattachement.societes.id` levait une
-// exception et TOUT l'agenda tombait (preuve : supabase/tests/
-// 50_securite.test.sql, section G).
+// non nulle — sans cette garde, TOUT l'agenda tombait (preuve : supabase/
+// tests/50_securite.test.sql, section G).
+//
+// Événements d'une organisation : DEUX requêtes plutôt qu'un embarquement
+// filtré à alias (`filtre:evenement_societes!inner(...)` en plus de
+// `evenement_societes(...)`), dont le comportement dans PostgREST n'a pas pu
+// être vérifié sans API : (1) identifiants des événements PUBLIÉS dont
+// l'organisation est organisatrice ou co-organisatrice (`evenement_societes`
+// joint à `evenements!inner`, filtre explicite `evenements.statut`, en plus de
+// la RLS), puis (2) ces événements, avec la sélection et les filtres de
+// l'agenda.
 //
 // Règle de rendu : étiqueté `evenements` et `societes` (les organisateurs et
 // échéances n'ont pas leur propre page publique ; leur invalidation passe
@@ -33,44 +42,39 @@ import "server-only";
 // qui appelleront toutes `invalider(ETIQUETTES.EVENEMENTS)` — server actions
 // de l'espace gestionnaire, phase 5, et du back-office, phase 6 ; la
 // dépublication ou l'archivage d'une organisation, qui la retire des
-// organisateurs affichés, invalide `societes`).
+// organisateurs affichés, invalide `societes`), et durée de validité de
+// 5 minutes (`DUREE_VALIDITE_CACHE`) pour les écritures faites hors server
+// action.
 import { unstable_cache } from "next/cache";
 
-import { ETIQUETTES } from "@/lib/cache";
+import { DUREE_VALIDITE_CACHE, ETIQUETTES } from "@/lib/cache";
 import { creerClientPublic } from "@/lib/supabase/public";
-import type { Enums } from "@/lib/supabase/types";
-import { aujourdhuiPortoNovo } from "@/lib/utils/dates";
+import { aujourdhuiPortoNovo, lireDateIso } from "@/lib/utils/dates";
+import {
+  ROLES_ORGANISATEURS,
+  repartirEvenements,
+  versEvenementResume,
+  type EvenementResume,
+  type EvenementsSociete,
+  type LigneEvenementResume,
+} from "@/lib/utils/evenements";
 
-export type OrganisateurEvenement = {
-  role: Enums<"role_organisation">;
-  id: string;
-  slug: string;
-  sigle: string;
-};
+export type {
+  EcheanceEvenement,
+  EvenementResume,
+  EvenementsSociete,
+  OrganisateurEvenement,
+} from "@/lib/utils/evenements";
 
-export type EcheanceEvenement = {
-  id: string;
-  type: Enums<"type_echeance">;
-  libelle: string | null;
-  dateLimite: string;
-};
+/** Événement de l'agenda : même forme qu'`EvenementResume` (nom conservé de la phase 1). */
+export type EvenementAVenir = EvenementResume;
 
-export type EvenementAVenir = {
-  id: string;
-  slug: string;
-  titre: string;
-  type: Enums<"type_evenement">;
-  dateDebut: string;
-  dateFin: string;
-  heureDebut: string | null;
-  modalite: Enums<"modalite_evenement">;
-  ville: string | null;
-  gratuit: boolean;
-  organisateurs: OrganisateurEvenement[];
-  prochaineEcheance: EcheanceEvenement | null;
-};
-
-const SELECTION_EVENEMENT_A_VENIR = `
+/**
+ * Colonnes lues pour une carte d'événement. Toutes figurent dans les
+ * `grant select (…)` de la migration 6 (lecture accordée par colonne :
+ * jamais `select("*")`).
+ */
+const SELECTION_EVENEMENT_RESUME = `
   id,
   slug,
   titre,
@@ -79,18 +83,21 @@ const SELECTION_EVENEMENT_A_VENIR = `
   date_fin,
   heure_debut,
   modalite,
+  lieu_nom,
   ville,
   gratuit,
   evenement_societes ( role, societes!inner ( id, slug, sigle ) ),
   echeances ( id, type, libelle, date_limite )
 ` as const;
 
+const FORMAT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const listerEvenementsAVenirEnCache = unstable_cache(
-  async (aujourdhui: string): Promise<EvenementAVenir[]> => {
+  async (aujourdhui: string): Promise<EvenementResume[]> => {
     const supabase = creerClientPublic();
     const { data, error } = await supabase
       .from("evenements")
-      .select(SELECTION_EVENEMENT_A_VENIR)
+      .select(SELECTION_EVENEMENT_RESUME)
       .eq("statut", "publie")
       .eq("evenement_societes.societes.statut", "publie")
       .gte("date_fin", aujourdhui)
@@ -100,57 +107,84 @@ const listerEvenementsAVenirEnCache = unstable_cache(
       throw new Error(`Lecture des événements à venir impossible : ${error.message}`);
     }
 
-    return data.map((evenement) => {
-      const echeancesAVenir = evenement.echeances
-        .filter((echeance) => echeance.date_limite >= aujourdhui)
-        .sort((a, b) => a.date_limite.localeCompare(b.date_limite));
-
-      return {
-        id: evenement.id,
-        slug: evenement.slug,
-        titre: evenement.titre,
-        type: evenement.type,
-        dateDebut: evenement.date_debut,
-        dateFin: evenement.date_fin,
-        heureDebut: evenement.heure_debut,
-        modalite: evenement.modalite,
-        ville: evenement.ville,
-        gratuit: evenement.gratuit,
-        // supabase-js type `societes` comme non nul (clé étrangère NOT NULL),
-        // mais la RLS peut le rendre nul (voir l'en-tête) : on le retype
-        // honnêtement avant de filtrer.
-        organisateurs: evenement.evenement_societes.flatMap((rattachement) => {
-          const societe = rattachement.societes as typeof rattachement.societes | null;
-          return societe
-            ? [
-                {
-                  role: rattachement.role,
-                  id: societe.id,
-                  slug: societe.slug,
-                  sigle: societe.sigle,
-                },
-              ]
-            : [];
-        }),
-        prochaineEcheance: echeancesAVenir[0]
-          ? {
-              id: echeancesAVenir[0].id,
-              type: echeancesAVenir[0].type,
-              libelle: echeancesAVenir[0].libelle,
-              dateLimite: echeancesAVenir[0].date_limite,
-            }
-          : null,
-      };
-    });
+    // Annotation : `societes` y est nullable (voir l'en-tête).
+    const lignes: LigneEvenementResume[] = data;
+    return lignes.map((ligne) => versEvenementResume(ligne, aujourdhui));
   },
   ["requetes/evenements/lister-evenements-a-venir"],
-  { tags: [ETIQUETTES.EVENEMENTS, ETIQUETTES.SOCIETES] },
+  { tags: [ETIQUETTES.EVENEMENTS, ETIQUETTES.SOCIETES], revalidate: DUREE_VALIDITE_CACHE },
 );
 
 /**
  * Événements publiés à venir (`date_fin >= aujourd'hui` à Porto-Novo), triés
  * par date de début, avec leurs organisateurs et leur prochaine échéance.
+ * `aujourdhui` (« AAAA-MM-JJ ») : par défaut `aujourdhuiPortoNovo()`.
  */
-export async function listerEvenementsAVenir(): Promise<EvenementAVenir[]> {
-  return listerEvenementsAVenirEnCache(aujourdhuiPortoNovo());
+export async function listerEvenementsAVenir(
+  aujourdhui: string = aujourdhuiPortoNovo(),
+): Promise<EvenementResume[]> {
+  lireDateIso(aujourdhui);
+  return listerEvenementsAVenirEnCache(aujourdhui);
+}
+
+const listerEvenementsSocieteEnCache = unstable_cache(
+  async (societeId: string, aujourdhui: string): Promise<EvenementsSociete> => {
+    const supabase = creerClientPublic();
+
+    // Filtre explicite sur le statut de l'événement dès cette première
+    // requête (CLAUDE.md, section 6), même si la RLS ne montre déjà à `anon`
+    // que les rattachements d'événements publiés : même motif que l'annuaire
+    // (`evenements!inner` + `evenements.statut`).
+    const { data: rattachements, error: erreurRattachements } = await supabase
+      .from("evenement_societes")
+      .select("evenement_id, evenements!inner ( id )")
+      .eq("societe_id", societeId)
+      .in("role", ROLES_ORGANISATEURS)
+      .eq("evenements.statut", "publie");
+
+    if (erreurRattachements) {
+      throw new Error(
+        `Lecture des événements de l'organisation impossible : ${erreurRattachements.message}`,
+      );
+    }
+
+    const ids = [...new Set(rattachements.map((rattachement) => rattachement.evenement_id))];
+    if (ids.length === 0) return { aVenir: [], passes: [] };
+
+    const { data, error } = await supabase
+      .from("evenements")
+      .select(SELECTION_EVENEMENT_RESUME)
+      .in("id", ids)
+      .eq("statut", "publie")
+      .eq("evenement_societes.societes.statut", "publie");
+
+    if (error) {
+      throw new Error(`Lecture des événements de l'organisation impossible : ${error.message}`);
+    }
+
+    const lignes: LigneEvenementResume[] = data;
+    return repartirEvenements(
+      lignes.map((ligne) => versEvenementResume(ligne, aujourdhui)),
+      aujourdhui,
+    );
+  },
+  ["requetes/evenements/lister-evenements-societe"],
+  { tags: [ETIQUETTES.EVENEMENTS, ETIQUETTES.SOCIETES], revalidate: DUREE_VALIDITE_CACHE },
+);
+
+/**
+ * Événements publiés dont l'organisation `societeId` est organisatrice ou
+ * co-organisatrice (partenaire exclu), séparés en `aVenir` (date de début
+ * croissante) et `passes` (du plus récent au plus ancien), au format des
+ * cartes (`EvenementResume`). Identifiant mal formé : deux listes vides.
+ * `aujourdhui` (« AAAA-MM-JJ ») : par défaut `aujourdhuiPortoNovo()` ; le
+ * passer explicitement pour qu'une page utilise la même date partout.
+ */
+export async function listerEvenementsSociete(
+  societeId: string,
+  aujourdhui: string = aujourdhuiPortoNovo(),
+): Promise<EvenementsSociete> {
+  lireDateIso(aujourdhui);
+  if (!FORMAT_UUID.test(societeId)) return { aVenir: [], passes: [] };
+  return listerEvenementsSocieteEnCache(societeId.toLowerCase(), aujourdhui);
 }

@@ -20,6 +20,17 @@ describe("charte graphique", () => {
     expect(jetonsCss).toEqual(jetonsTs);
   });
 
+  it("badge « urgent » : texte encre sur fond or, rapport ≈ 5,66:1 (conforme AA)", () => {
+    const couple = couplesUtilises.find(
+      (candidat) =>
+        candidat.premierPlan === "encre" && candidat.fond === "or" && candidat.nature === "texte",
+    );
+    expect(couple).toBeDefined();
+    const rapport = rapportDuCouple(couple!);
+    expect(rapport).toBeCloseTo(5.66, 2);
+    expect(respecteAA(rapport, "texte")).toBe(true);
+  });
+
   it.each(couplesUtilises.map((couple) => [couple.usage, couple] as const))(
     "respecte le contraste AA : %s",
     (_usage, couple) => {

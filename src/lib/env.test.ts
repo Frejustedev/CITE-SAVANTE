@@ -1,6 +1,24 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { envPublic, envServeur } from "./env";
+
+/**
+ * Variables de `.env.example`, lues comme le ferait Next.js (`NOM=valeur`,
+ * guillemets doubles retirés, commentaires et lignes vides ignorés).
+ */
+function variablesEnvExample(): Record<string, string> {
+  const contenu = readFileSync(resolve(process.cwd(), ".env.example"), "utf8");
+  const variables: Record<string, string> = {};
+  for (const ligne of contenu.split(/\r?\n/)) {
+    const correspondance = /^([A-Z0-9_]+)=(.*)$/.exec(ligne.trim());
+    if (!correspondance) continue;
+    const [, nom, brute] = correspondance;
+    variables[nom] = brute.trim().replace(/^"(.*)"$/, "$1");
+  }
+  return variables;
+}
 
 const VARIABLES_PUBLIQUES_VALIDES = {
   NEXT_PUBLIC_SITE_URL: "http://localhost:3000",
@@ -94,6 +112,35 @@ describe("envServeur", () => {
     expect(env.cronSecret).toBe("secret-de-test");
   });
 
+  it("traite une variable facultative vide (ou faite d'espaces) comme absente", () => {
+    stub({
+      ...VARIABLES_PUBLIQUES_VALIDES,
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: "",
+      SUPABASE_SERVICE_ROLE_KEY: "cle-service-de-test",
+      RESEND_API_KEY: "",
+      EMAIL_FROM: "   ",
+      ADMIN_NOTIFY_EMAIL: "",
+      TURNSTILE_SECRET_KEY: "",
+      FORM_HASH_SALT: "",
+      CRON_SECRET: "",
+    });
+    const env = envServeur();
+    expect(env.turnstileSiteKey).toBeNull();
+    expect(env.resendApiKey).toBeNull();
+    expect(env.emailFrom).toBeNull();
+    expect(env.adminNotifyEmail).toBeNull();
+    expect(env.turnstileSecretKey).toBeNull();
+    expect(env.formHashSalt).toBeNull();
+    expect(env.cronSecret).toBeNull();
+  });
+
+  it("refuse toujours une variable REQUISE vide", () => {
+    stub({ ...VARIABLES_PUBLIQUES_VALIDES, SUPABASE_SERVICE_ROLE_KEY: "" });
+    expect(() => envServeur()).toThrow(/SUPABASE_SERVICE_ROLE_KEY/);
+    stub({ ...VARIABLES_PUBLIQUES_VALIDES, NEXT_PUBLIC_SUPABASE_ANON_KEY: "" });
+    expect(() => envPublic()).toThrow(/NEXT_PUBLIC_SUPABASE_ANON_KEY/);
+  });
+
   it("rejette une adresse ADMIN_NOTIFY_EMAIL mal formée", () => {
     stub({
       ...VARIABLES_PUBLIQUES_VALIDES,
@@ -101,5 +148,44 @@ describe("envServeur", () => {
       ADMIN_NOTIFY_EMAIL: "pas-une-adresse",
     });
     expect(() => envServeur()).toThrow(/ADMIN_NOTIFY_EMAIL/);
+  });
+});
+
+describe(".env.local copié de .env.example", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("est accepté par envPublic() et envServeur() une fois les variables Supabase remplies", () => {
+    const exemple = variablesEnvExample();
+    // Garde-fou : le fichier lu est bien celui attendu (variables vides comprises).
+    expect(exemple).toHaveProperty("RESEND_API_KEY", "");
+    expect(exemple).toHaveProperty("ADMIN_NOTIFY_EMAIL", "");
+    expect(exemple).toHaveProperty("FORM_HASH_SALT", "");
+    expect(exemple).toHaveProperty("CRON_SECRET", "");
+
+    // Seules les variables Supabase sont complétées, comme le demande
+    // l'en-tête de .env.example ; tout le reste est pris tel quel.
+    stub({
+      ...exemple,
+      NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "cle-anon-de-test",
+      SUPABASE_SERVICE_ROLE_KEY: "cle-service-de-test",
+    });
+
+    expect(envPublic()).toEqual({
+      siteUrl: exemple.NEXT_PUBLIC_SITE_URL,
+      supabaseUrl: "http://127.0.0.1:54321",
+      supabaseAnonKey: "cle-anon-de-test",
+      turnstileSiteKey: exemple.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+    });
+    const env = envServeur();
+    expect(env.supabaseServiceRoleKey).toBe("cle-service-de-test");
+    expect(env.resendApiKey).toBeNull();
+    expect(env.adminNotifyEmail).toBeNull();
+    expect(env.formHashSalt).toBeNull();
+    expect(env.cronSecret).toBeNull();
+    expect(env.emailFrom).toBe(exemple.EMAIL_FROM);
+    expect(env.turnstileSecretKey).toBe(exemple.TURNSTILE_SECRET_KEY);
   });
 });

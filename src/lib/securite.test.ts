@@ -41,11 +41,12 @@ describe("clé service_role", () => {
         chemin !== "lib/supabase/service.ts" &&
         /creerClientService|supabase\/service["']/.test(contenu),
     ).map(({ chemin }) => chemin);
-    // Aucun appelant avant la phase 2 (route /go, passerelle, spécifications
-    // 10.1 : route handler), puis les server actions de la phase 5 ; les
-    // appelants autorisés sont listés en tête de service.ts. Ajouter ici chaque
-    // nouvel appelant, après avoir vérifié qu'il en fait partie.
-    expect(fichiers).toEqual([]);
+    // Premier appelant (phase 2) : la passerelle /go (spécifications 10.1,
+    // route handler), pour l'insertion dans `clics_sortants` — usage listé en
+    // tête de service.ts. Viendront ensuite les server actions de la phase 5.
+    // Ajouter ici chaque nouvel appelant, après avoir vérifié qu'il fait
+    // partie des usages autorisés listés en tête de service.ts.
+    expect(fichiers).toEqual(["app/go/[type]/[id]/route.ts"]);
   });
 });
 

@@ -13,7 +13,25 @@
 // atteinte ; un `.env.local` partiel, tel qu'on l'a en développement avant la
 // phase 5, reste utilisable : ces variables valent `null` si absentes, c'est
 // au code qui les UTILISE de vérifier leur présence en temps voulu.
+//
+// Une variable facultative présente mais VIDE (`RESEND_API_KEY=`, comme dans
+// `.env.example`, que l'on copie en `.env.local`) vaut « absente » : sans
+// cela, `z.string().min(1).optional()` refuse "" et tout appel de
+// `envServeur()` échouait avec le `.env.local` fourni (relecture de la
+// phase 2 : aucun clic de la passerelle n'était enregistré).
 import { z } from "zod";
+
+/**
+ * Variable facultative : absente, vide ou faite d'espaces → `undefined` ;
+ * sinon validée par `schema`. Les variables REQUISES ne passent pas par ici :
+ * vides, elles restent refusées.
+ */
+function facultative<T extends z.ZodType<string>>(schema: T) {
+  return z.preprocess(
+    (valeur) => (typeof valeur === "string" && valeur.trim() === "" ? undefined : valeur),
+    schema.optional(),
+  );
+}
 
 const schemaPublic = z.object({
   NEXT_PUBLIC_SITE_URL: z.url({ message: "NEXT_PUBLIC_SITE_URL doit être une URL valide." }),
@@ -23,19 +41,19 @@ const schemaPublic = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z
     .string({ message: "NEXT_PUBLIC_SUPABASE_ANON_KEY est requise." })
     .min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY est requise."),
-  NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().min(1).optional(),
+  NEXT_PUBLIC_TURNSTILE_SITE_KEY: facultative(z.string().min(1)),
 });
 
 const schemaServeur = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z
     .string({ message: "SUPABASE_SERVICE_ROLE_KEY est requise." })
     .min(1, "SUPABASE_SERVICE_ROLE_KEY est requise."),
-  RESEND_API_KEY: z.string().min(1).optional(),
-  EMAIL_FROM: z.string().min(1).optional(),
-  ADMIN_NOTIFY_EMAIL: z.email().optional(),
-  TURNSTILE_SECRET_KEY: z.string().min(1).optional(),
-  FORM_HASH_SALT: z.string().min(1).optional(),
-  CRON_SECRET: z.string().min(1).optional(),
+  RESEND_API_KEY: facultative(z.string().min(1)),
+  EMAIL_FROM: facultative(z.string().min(1)),
+  ADMIN_NOTIFY_EMAIL: facultative(z.email()),
+  TURNSTILE_SECRET_KEY: facultative(z.string().min(1)),
+  FORM_HASH_SALT: facultative(z.string().min(1)),
+  CRON_SECRET: facultative(z.string().min(1)),
 });
 
 /** Traduit les erreurs Zod en un message français lisible, une ligne par variable. */

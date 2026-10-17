@@ -7,10 +7,27 @@
 // pas celui de cette étape). `src/lib/requetes/*.ts` met donc en cache
 // chaque lecture publique avec `unstable_cache` (le modèle « précédent »,
 // toujours disponible en Next 16 même s'il est marqué comme remplacé par
-// `use cache`), étiquetée avec une ou plusieurs des constantes ci-dessous.
+// `use cache`), étiquetée avec une ou plusieurs des constantes ci-dessous et
+// bornée par `DUREE_VALIDITE_CACHE` (garde-fou : `cache.test.ts`).
 // `invalider(...)` est appelée depuis les server actions (phase 5 et
-// suivantes) après chaque écriture qui touche des données publiques.
+// suivantes) après chaque écriture qui touche des données publiques. Aucune
+// lecture dont la clé viendrait d'une saisie libre du visiteur n'est mise en
+// cache (recherche texte, passerelle) : une entrée par saisie s'accumulerait.
 import { updateTag } from "next/cache";
+
+/**
+ * Durée de validité, en secondes, de CHAQUE lecture mise en cache
+ * (`unstable_cache(..., { tags, revalidate: DUREE_VALIDITE_CACHE })`) : 5 minutes.
+ * Filet de sécurité, en plus des étiquettes : une écriture faite HORS d'une
+ * server action (éditeur SQL, tableau de bord Supabase, script) n'appelle pas
+ * `invalider(...)` ; sans durée, elle resterait invisible sur le site tant
+ * que le serveur garde l'entrée (un an par défaut). Les server actions, elles,
+ * invalident immédiatement par étiquette. Passé ce délai, la lecture suivante
+ * sert encore l'ancienne valeur et relance la lecture en arrière-plan
+ * (« stale-while-revalidate ») : une écriture SQL apparaît donc au plus tard
+ * à la deuxième visite après 5 minutes.
+ */
+export const DUREE_VALIDITE_CACHE = 300;
 
 /** Une étiquette de cache, une par famille de données publiques (section 8). */
 export type Etiquette = "societes" | "evenements" | "disciplines" | "emplacements";
