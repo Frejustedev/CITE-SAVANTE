@@ -135,6 +135,117 @@ export function formaterPeriode(debut: string, fin: string): string {
 
 const MILLISECONDES_PAR_JOUR = 86_400_000;
 
+/**
+ * Instant UTC de minuit pour une date calendaire. `setUTCFullYear` plutôt
+ * que `Date.UTC(annee, …)`, qui interprète les années 0 à 99 comme 1900 à
+ * 1999.
+ */
+function minuitUtc(annee: number, mois: number, jour: number): Date {
+  const date = new Date(0);
+  date.setUTCFullYear(annee, mois - 1, jour);
+  return date;
+}
+
+/** « AAAA-MM-JJ » des composantes UTC d'une date. */
+function versDateIso(date: Date): string {
+  const annee = String(date.getUTCFullYear()).padStart(4, "0");
+  const mois = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const jour = String(date.getUTCDate()).padStart(2, "0");
+  return `${annee}-${mois}-${jour}`;
+}
+
+/**
+ * Ajoute `jours` (entier, négatif admis) à une date « AAAA-MM-JJ » et
+ * renvoie une date « AAAA-MM-JJ » : `ajouterJours("2027-02-28", 1)` →
+ * « 2027-03-01 », `ajouterJours("2026-12-31", 1)` → « 2027-01-01 ». Calcul
+ * en UTC, donc sans effet de fuseau ni d'heure d'été ; années bissextiles
+ * gérées. Lève une erreur si la date est invalide ou si `jours` n'est pas
+ * entier.
+ */
+export function ajouterJours(date: string, jours: number): string {
+  if (!Number.isInteger(jours)) {
+    throw new Error(`Nombre de jours invalide : ${jours} (entier attendu).`);
+  }
+  const d = lireDateIso(date);
+  return versDateIso(minuitUtc(d.annee, d.mois, d.jour + jours));
+}
+
+/**
+ * Jour de la semaine d'une date « AAAA-MM-JJ », numéroté à la française
+ * (norme ISO 8601) : 1 = lundi … 7 = dimanche.
+ */
+export function jourSemaineIso(date: string): number {
+  const d = lireDateIso(date);
+  const jour = minuitUtc(d.annee, d.mois, d.jour).getUTCDay(); // 0 = dimanche
+  return jour === 0 ? 7 : jour;
+}
+
+/** Lundi de la semaine (du lundi au dimanche) qui contient `date` (« AAAA-MM-JJ »). */
+export function lundiDeLaSemaine(date: string): string {
+  return ajouterJours(date, 1 - jourSemaineIso(date));
+}
+
+/** Nombre de jours d'un mois (mois de 1 à 12), années bissextiles comprises. */
+export function nombreJoursDuMois(annee: number, mois: number): number {
+  return joursDansLeMois(annee, mois);
+}
+
+/** Une heure décomposée (colonne `time` de Postgres). */
+export type HeureLue = { heures: number; minutes: number; secondes: number };
+
+const FORMAT_HEURE = /^(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/;
+
+/**
+ * Lit une heure « HH:MM » ou « HH:MM:SS » (colonne `time` de Postgres,
+ * renvoyée par PostgREST sous la forme « 09:00:00 » ; fraction de seconde
+ * ignorée), de 00:00:00 à 23:59:59. Lève une erreur en français sinon. Une
+ * heure de début d'événement ne se lit pas directement : voir `heureConnue`.
+ */
+export function lireHeure(heure: string): HeureLue {
+  const correspondance = FORMAT_HEURE.exec(heure);
+  if (!correspondance) {
+    throw new Error(`Heure invalide : « ${heure} » (format attendu : HH:MM ou HH:MM:SS).`);
+  }
+  const heures = Number(correspondance[1]);
+  const minutes = Number(correspondance[2]);
+  const secondes = Number(correspondance[3] ?? "0");
+  if (heures > 23 || minutes > 59 || secondes > 59) {
+    throw new Error(`Heure invalide : « ${heure} » n'existe pas.`);
+  }
+  return { heures, minutes, secondes };
+}
+
+/**
+ * Heure de début d'un événement, normalisée en « HH:MM:SS », ou `null` si
+ * elle est absente. POINT D'ENTRÉE UNIQUE : tout ce qui lit `heureDebut`
+ * (fiche, .ics, Google Agenda, JSON-LD, description, images d'aperçu, tri)
+ * passe par cette fonction.
+ *
+ * Une heure de 24 h ou plus est considérée comme ABSENTE : Postgres admet
+ * « 24:00:00 » dans une colonne `time`, mais on ne peut en tirer aucun horaire
+ * à annoncer (ni « à 24 h », ni un report au lendemain, qui changerait la date
+ * de l'événement). Une valeur mal formée lève une erreur, comme `lireHeure`.
+ */
+export function heureConnue(heure: string | null | undefined): string | null {
+  if (!heure) return null;
+  const heures = FORMAT_HEURE.exec(heure)?.[1];
+  if (heures !== undefined && Number(heures) >= 24) return null;
+  const lue = lireHeure(heure);
+  return [lue.heures, lue.minutes, lue.secondes]
+    .map((nombre) => String(nombre).padStart(2, "0"))
+    .join(":");
+}
+
+/**
+ * Heure en français, avec des espaces insécables (U+00A0) pour ne jamais
+ * couper « 8 h 30 » en fin de ligne : « 08:30:00 » → « 8 h 30 »,
+ * « 09:00:00 » → « 9 h », « 14:05:00 » → « 14 h 05 ». Secondes ignorées.
+ */
+export function formaterHeure(heure: string): string {
+  const { heures, minutes } = lireHeure(heure);
+  return minutes === 0 ? `${heures} h` : `${heures} h ${String(minutes).padStart(2, "0")}`;
+}
+
 function joursDepuisEpoque(date: string): number {
   const d = lireDateIso(date);
   return Date.UTC(d.annee, d.mois - 1, d.jour) / MILLISECONDES_PAR_JOUR;

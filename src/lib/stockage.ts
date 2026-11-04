@@ -56,3 +56,13 @@ export function urlPubliqueStockage(
 export function urlLogo(logoPath: string | null | undefined): string | null {
   return urlPubliqueStockage("logos", logoPath);
 }
+
+/** URL publique de l'affiche d'un événement (`evenements.affiche_path`), ou `null`. */
+export function urlAffiche(affichePath: string | null | undefined): string | null {
+  return urlPubliqueStockage("affiches", affichePath);
+}
+
+/** URL publique du visuel d'un emplacement publicitaire (`emplacements_pub.image_path`), ou `null`. */
+export function urlPublicite(imagePath: string | null | undefined): string | null {
+  return urlPubliqueStockage("publicites", imagePath);
+}

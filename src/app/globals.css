@@ -163,6 +163,25 @@
     -webkit-text-fill-color: var(--color-encre);
     box-shadow: inset 0 0 0 1000px var(--color-creme);
   }
+
+  /*
+   * Champs de date, dans Chromium : le segment actif (jj, mm, aaaa) est peint
+   * en bleu système (`Highlight`), au clavier comme à la souris, et l'icône du
+   * calendrier reçoit un anneau sombre. Sur ces pseudo-éléments, `:focus` et
+   * `:focus-visible` sont sans effet : seul `:focus-within` agit, et l'anneau
+   * de l'icône ne se règle que par sa couleur. Le calendrier déroulant ouvert
+   * par cette icône reste dessiné par le navigateur.
+   */
+  input[type="date"]::-webkit-datetime-edit-day-field:focus-within,
+  input[type="date"]::-webkit-datetime-edit-month-field:focus-within,
+  input[type="date"]::-webkit-datetime-edit-year-field:focus-within {
+    background-color: var(--color-or-clair);
+    color: var(--color-encre);
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    outline-color: var(--color-or);
+  }
 }
 
 /*

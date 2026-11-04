@@ -10,6 +10,13 @@ import {
   formaterPeriode,
   joursRestants,
   lireDateIso,
+  ajouterJours,
+  formaterHeure,
+  heureConnue,
+  jourSemaineIso,
+  lireHeure,
+  lundiDeLaSemaine,
+  nombreJoursDuMois,
 } from "./dates";
 
 describe("aujourdhuiPortoNovo", () => {
@@ -240,5 +247,107 @@ describe("decrireJoursRestants", () => {
 
   it("refuse un nombre non entier", () => {
     expect(() => decrireJoursRestants(1.5)).toThrow(/entier attendu/);
+  });
+});
+
+// ── Phase 3 : calculs sur les dates et heures ─────────────────────────────────
+
+describe("ajouterJours", () => {
+  it.each([
+    ["2027-03-12", 1, "2027-03-13"],
+    ["2027-01-31", 1, "2027-02-01"],
+    ["2027-02-28", 1, "2027-03-01"],
+    ["2028-02-28", 1, "2028-02-29"],
+    ["2028-02-29", 1, "2028-03-01"],
+    ["2026-12-31", 1, "2027-01-01"],
+    ["2027-01-01", -1, "2026-12-31"],
+    ["2027-03-01", -1, "2027-02-28"],
+    ["2024-03-01", -1, "2024-02-29"],
+    ["2027-03-12", 0, "2027-03-12"],
+    ["2026-10-30", 400, "2027-12-04"],
+    ["0099-12-31", 1, "0100-01-01"],
+  ])("%s %+d jour(s) → %s", (date, jours, attendu) => {
+    expect(ajouterJours(date, jours)).toBe(attendu);
+  });
+
+  it("refuse une date invalide ou un nombre non entier", () => {
+    expect(() => ajouterJours("2027-02-29", 1)).toThrow(/n'existe pas/);
+    expect(() => ajouterJours("2027-03-12", 0.5)).toThrow(/entier attendu/);
+  });
+});
+
+describe("jourSemaineIso et lundiDeLaSemaine", () => {
+  it("numérote du lundi (1) au dimanche (7)", () => {
+    // Semaine du lundi 26 octobre au dimanche 1er novembre 2026.
+    expect(jourSemaineIso("2026-10-26")).toBe(1);
+    expect(jourSemaineIso("2026-10-30")).toBe(5);
+    expect(jourSemaineIso("2026-11-01")).toBe(7);
+    expect(jourSemaineIso("2027-02-01")).toBe(1);
+    expect(jourSemaineIso("2028-02-29")).toBe(2);
+  });
+
+  it("lundi de la semaine, y compris à cheval sur deux mois ou deux années", () => {
+    expect(lundiDeLaSemaine("2026-10-26")).toBe("2026-10-26");
+    expect(lundiDeLaSemaine("2026-11-01")).toBe("2026-10-26");
+    expect(lundiDeLaSemaine("2027-01-01")).toBe("2026-12-28");
+    expect(lundiDeLaSemaine("2027-01-03")).toBe("2026-12-28");
+  });
+
+  it("nombre de jours du mois", () => {
+    expect(nombreJoursDuMois(2027, 2)).toBe(28);
+    expect(nombreJoursDuMois(2028, 2)).toBe(29);
+    expect(nombreJoursDuMois(2100, 2)).toBe(28);
+    expect(nombreJoursDuMois(2000, 2)).toBe(29);
+    expect(nombreJoursDuMois(2026, 12)).toBe(31);
+    expect(nombreJoursDuMois(2026, 11)).toBe(30);
+  });
+});
+
+describe("heureConnue", () => {
+  it("heure absente : null", () => {
+    expect(heureConnue(null)).toBeNull();
+    expect(heureConnue(undefined)).toBeNull();
+    expect(heureConnue("")).toBeNull();
+  });
+
+  it("heure normale : normalisée en « HH:MM:SS »", () => {
+    expect(heureConnue("09:00:00")).toBe("09:00:00");
+    expect(heureConnue("08:30")).toBe("08:30:00");
+    expect(heureConnue("23:59:59.5")).toBe("23:59:59");
+    expect(heureConnue("00:00:00")).toBe("00:00:00");
+  });
+
+  it.each(["24:00:00", "24:00", "24:00:01", "24:30:00", "25:00:00", "99:00:00"])(
+    "24 h ou plus (« %s ») : considérée comme absente",
+    (heure) => {
+      expect(heureConnue(heure)).toBeNull();
+    },
+  );
+
+  it.each(["9h", "midi", "12:60:00", "12:00:60"])("valeur mal formée « %s » : erreur", (heure) => {
+    expect(() => heureConnue(heure)).toThrow(/Heure invalide/);
+  });
+});
+
+describe("lireHeure et formaterHeure", () => {
+  it("lit les formats de la colonne time", () => {
+    expect(lireHeure("09:00:00")).toEqual({ heures: 9, minutes: 0, secondes: 0 });
+    expect(lireHeure("08:30")).toEqual({ heures: 8, minutes: 30, secondes: 0 });
+    expect(lireHeure("23:59:59.5")).toEqual({ heures: 23, minutes: 59, secondes: 59 });
+  });
+
+  it.each(["9:00", "24:00:00", "25:00:00", "24:00:01", "12:60:00", "12:00:60", "midi", ""])(
+    "refuse « %s »",
+    (heure) => {
+      expect(() => lireHeure(heure)).toThrow(/Heure invalide/);
+    },
+  );
+
+  it("« 8 h 30 », « 9 h », « 14 h 05 », espaces insécables", () => {
+    expect(formaterHeure("08:30:00")).toBe("8 h 30");
+    expect(formaterHeure("09:00:00")).toBe("9 h");
+    expect(formaterHeure("14:05:00")).toBe("14 h 05");
+    expect(formaterHeure("00:00:00")).toBe("0 h");
+    expect(formaterHeure("08:30:00")).not.toContain(" ");
   });
 });

@@ -2211,6 +2211,673 @@ Le 14 octobre 2026, dans cet ordre, après les retouches :
   `CarteEvenement.tsx`, `PaginationAnnuaire.tsx`, `PROGRESS.md`) : code 0 ; fins de
   ligne LF.
 
+## Phase 3 — agenda, échéances et partage
+
+**État au 4 novembre 2026 : code fait et intégré (31 octobre) ; vérification sur données
+réelles faite le 31 octobre (voir « Vérification sur données réelles ») ; corrections de
+fin de phase appliquées, contrôles et contre-vérification passés le 4 novembre (voir
+« Corrections de fin de phase » et « Vérifications de fin de phase ») ; restent les essais
+du porteur (import du .ics, aperçu WhatsApp après déploiement).** Les sept points du prompt
+de phase 3 (`docs/PROMPTS.md`) sont écrits. Aucune dépendance ajoutée : le fichier .ics est
+généré sans bibliothèque, les images d'aperçu utilisent `next/og` (fourni par Next.js) et des copies
+des `.woff` de `@fontsource`, dans `assets/polices/`.
+
+Travail mené par quatre agents (fondations, agenda, fiche événement et .ics,
+échéances et images d'aperçu), puis une intégration (relecture d'ensemble,
+modifications des fichiers partagés, vérifications).
+
+### Fait
+
+- **Utilitaires purs et testés** (`src/lib/utils/`, un `.test.ts` chacun) :
+  - `dates.ts` (ajouts) : `ajouterJours`, `jourSemaineIso`, `lundiDeLaSemaine`,
+    `nombreJoursDuMois`, `lireHeure` (« HH:MM », « HH:MM:SS », de 00:00:00 à 23:59:59),
+    `heureConnue` (point d'entrée de toute lecture de `heureDebut`, voir « Décisions »),
+    `formaterHeure` (« 8 h 30 », « 9 h », espaces insécables).
+  - `evenements.ts` (étendu) : `EvenementResume` gagne `disciplines` et
+    `miseEnAvant` ; `EvenementFiche` (tout le contenu de la section 8.4, liens
+    `https://` sûrs seulement, textes vides ramenés à `null`), `EcheanceAVenir`,
+    conversions des lignes, tris (`comparerEvenementsAVenir` : mis en avant d'abord),
+    `choisirSuggestions`, `organisateurPrincipal`, `libelleEcheance`, `texteLieu`,
+    `lieuAgenda`.
+  - `ics.ts` : générateur RFC 5545 maison (`genererIcs`, `plageEvenement`,
+    `echapperTexteIcs`, `plierLigneIcs`, `nomFichierIcs`, bloc `VTIMEZONE`).
+  - `partage.ts` : `lienGoogleAgenda`, `texteWhatsApp`, `lienWhatsApp`, `lienCarte`
+    (recherche OpenStreetMap).
+  - `calendrier.ts` : mois et paramètre `?mois=`, fenêtre de navigation, grille du
+    lundi au dimanche (4 à 6 semaines), répartition jour par jour, groupement par mois
+    et des échéances par semaine.
+  - `agenda.ts` : lecture et normalisation des filtres de l'agenda et des échéances,
+    chemins (`cheminAgenda`, `cheminEcheances`), filtrage en mémoire.
+  - `texte.ts` (intégration) : `premiereLettreMajuscule`, seule copie (voir
+    « Intégration : corrections »).
+- **Lectures** (`src/lib/requetes/`, règles des phases 1 et 2 respectées : colonnes
+  listées, `statut = 'publie'` explicite y compris sur les organisations jointes
+  (`societes!inner` + filtre + garde contre `null`), `unstable_cache` étiqueté et
+  borné à 5 minutes, « aujourd'hui » reçu en argument) :
+  - `evenements.ts` : `listerEvenementsAgenda`, `listerEvenementsMois`,
+    `listerSlugsEvenementsPublies` (lecture par pages de 1 000), `obtenirEvenementPublie`
+    (slug vérifié d'abord contre la liste en cache), `listerSuggestions`,
+    `listerEcheancesAVenir` ; `listerEvenementsAVenir` et `listerEvenementsSociete`
+    inchangées (étiquette `disciplines` ajoutée).
+  - `emplacements.ts` : `lireEmplacementsActifs` (mises en avant `evenement_en_avant`
+    et bannières `banniere_agenda` actives ce jour-là, filtre explicite `actif` et
+    période, puis seconde vérification en mémoire ; lien de bannière par la
+    passerelle).
+- **Point 1, `/agenda`** (`src/app/agenda/page.tsx`, `src/components/agenda/`) : vue
+  liste groupée par mois de début, bloc « Événements mis en avant » en tête ; vue
+  calendrier en `<table>` à partir de 768 px, liste des jours du mois en dessous
+  (CSS seul) ; filtres `type`, `discipline`, `ville`, `modalite`, `gratuit`, `du`,
+  `au`, `q` dans l'URL (formulaire GET sans JavaScript, enrichi côté client) ;
+  archives `?periode=passes` ; bannière signalée « Publicité » ; états vides ;
+  `error.tsx` (couvre aussi `/agenda/[slug]`).
+- **Point 2, `/agenda/[slug]`** (`src/app/agenda/[slug]/`,
+  `src/components/evenements/fiche/`) : fil d'Ariane, badge de type, un seul `h1`,
+  dates, heure, modalité, lieu et « Voir sur la carte », organisateurs et
+  partenaires (liens vers leurs fiches), disciplines, « Dates clés », « Participation »,
+  boutons « S'inscrire » et « Site de l'événement » par `/go`, menu « Ajouter à mon
+  agenda » (.ics, Google Agenda), « Partager sur WhatsApp », affiche (`next/image`),
+  JSON-LD `Event` et `BreadcrumbList`, bandeau d'un événement passé et suggestions,
+  `not-found.tsx`.
+- **Point 3, `/agenda/[slug]/ics`** : `route.ts` mince et `fichierAgenda.ts`
+  (logique testée, voisin non routable). Tests du générateur : journées entières,
+  plusieurs jours, heure et fuseau, échappements, pliage des lignes (`ics.test.ts`).
+- **Point 4** : liens Google Agenda et WhatsApp testés (`partage.test.ts`), menu
+  « Ajouter à mon agenda » en `<details>` natif.
+- **Point 5** : images d'aperçu `opengraph-image.tsx` de la fiche événement et de la
+  fiche organisation (`src/lib/og/`), polices Fraunces et EB Garamond lues sur le
+  disque (copies de `assets/polices/`, voir « Décisions »), image générique pour un slug
+  inconnu.
+- **Point 6, `/echeances`** (`src/app/echeances/`, `src/components/echeances/`) :
+  groupes « Cette semaine », « Semaine prochaine », puis par mois ; badge « Urgente »
+  (or) à 7 jours ou moins ; filtres `type` et `discipline` ; `error.tsx`.
+- **Point 7** : la carte d'événement (`CarteEvenement`) affiche la prochaine échéance
+  (libellé, date, badge « Clôture … » or si urgente), la mention « Mis en avant » et
+  le lieu par `texteLieu` (`BadgeTypeEvenement` partagé).
+- **Passerelle** : `/agenda/{slug}` admis comme page d'origine d'un clic s'il est
+  publié (`RUBRIQUES_ORIGINE_A_SLUG`, `listerSlugsEvenementsPublies` branché dans
+  `src/app/go/[type]/[id]/route.ts`) ; tests adaptés (slug publié enregistré, slug
+  inventé → `null`).
+
+### Intégration : corrections
+
+- **`site.domaine`** (`src/config/site.ts`, demande de l'agent des images
+  d'aperçu, acceptée) : `"citesavante.com"`, valeur FIXE, indépendante de
+  `NEXT_PUBLIC_SITE_URL`. `MENTION_DOMAINE` (pied des images) et `DOMAINE_UID`
+  (identifiants du .ics) en dérivent : un même événement garde le même UID dans tous
+  les environnements.
+- **`CHEMIN_ANNONCER_EVENEMENT`** (demande acceptée) : une seule constante dans
+  `src/config/site.ts`, au lieu de deux copies (`EtatVideAgenda.tsx`,
+  `echeances/libelles.ts`). Corrigé au passage : le bouton « Annoncer un événement »
+  de la fiche introuvable (`agenda/[slug]/not-found.tsx`) menait à `/referencer`.
+- **`premiereLettreMajuscule`** (demande acceptée) : trois copies non identiques
+  (`charAt(0)` dans `fiche/utilitaires.ts` et `agenda/libelles.ts`, découpe par points
+  de code dans `og/texte.ts`) remplacées par une seule, `src/lib/utils/texte.ts`
+  (version par points de code). `echeances/libelles.ts` n'importe plus rien de
+  `src/lib/og/`. Tests regroupés dans `src/lib/utils/texte.test.ts`.
+- **Modifications refusées** : aucune ; aucune demande ne contredisait CLAUDE.md ou les
+  règles de données.
+- **Relecture d'ensemble** (aucun autre défaut trouvé) : un seul `h1` par page (pages,
+  `error.tsx`, `not-found.tsx`), aucun `<main>` dans les pages, aucune couleur hors
+  jetons (classes Tailwind de couleur et hexadécimaux hors `src/lib/og/` et
+  `src/lib/charte.ts` : aucun), aucun `select("*")`, `statut = 'publie'` explicite
+  sur chaque lecture, « aujourd'hui » calculé par les pages et passé en argument,
+  `revalidate` sur chaque `unstable_cache` (`cache.test.ts`), `force-dynamic` sur
+  chaque page et route qui lit la base, `server-only` en tête de chaque fichier de
+  `src/lib/requetes/`, client de service importé seulement par la passerelle
+  (`securite.test.ts`), aucun lien imbriqué, aucun texte anglais visible (`alt`,
+  `aria-label`, `title` compris), aucun emoji.
+
+### Corrections de fin de phase (4 novembre 2026)
+
+Défauts relevés par la vérification du 31 octobre et par la relecture du 4 novembre. Les
+défauts de comportement ont d'abord été reproduits : avant correction, 47 tests sur 300
+échouaient dans les 10 fichiers de tests visés. Les retraits de code et le changement de
+type sont prouvés par une recherche vide et le typecheck ; la copie des polices est une
+précaution, sans défaut observé.
+
+- **Heure de début à `24:00:00`** (admise par Postgres) : affichage « 1er mai 2027 à
+  24 h », plage reportée au lendemain, tri après le matin. Corrigé par `heureConnue`
+  (`src/lib/utils/dates.ts`), voir « Décisions ».
+- **Segments vides sur les images d'aperçu** : `, Ouidah`, `Palais,`, `, , Ouidah`, `,`,
+  `Organisé par - et SBMI`, `-, Santé, , et Droit`. Corrigé par `nettoyerSegmentApercu`
+  (`src/lib/og/texte.ts`), appliqué dans `src/lib/og/donnees.ts` au lieu, à la ville,
+  aux sigles d'organisateurs et aux disciplines, avant l'assemblage.
+- **Rôle collé dans le nom accessible** (« …PneumologieCo-organisateur ») : séparateur
+  masqué « , » dans `InformationsEvenement.tsx`. La fiche réelle donne désormais « ABPN,
+  [DÉMO] Association Béninoise de Pneumologie, Co-organisateur ». Contrôle des voisins :
+  seul ce rôle suit ce patron (deux `span` en ligne séparés par une marge) ; dans Chrome,
+  les enfants flex ou bloc ne se collent pas (balayage du DOM de 8 pages).
+- **Bannière avec visuel** : « (site externe) » masqué ajouté au lien
+  (`BanniereAgenda.tsx`) ; la bannière typographique ne change pas.
+- **Événement mis en avant dans la grille du calendrier** : à partir de 768 px, seul un
+  fanion or de 14 px le signalait (2,61:1 sur crème, 2,30:1 sur crème soutenu). La
+  mention « Mis en avant » est écrite en clair, le fanion reste décoratif
+  (`CalendrierMois.tsx`). Contrôlé dans un navigateur à 768, 800, 1024 et 1280 px : ni la
+  page ni le lien de la case ne débordent.
+- **Code sans usage retiré** : `periodeAgendaLabels` (`src/lib/textes.ts`), colonne
+  `updated_at` et champ `misAJourLe` (`src/lib/requetes/evenements.ts`,
+  `src/lib/utils/evenements.ts`).
+- **`FormEvent` déprécié** dans les deux formulaires de filtres de la phase 3 : `surEnvoi`
+  passe à `SubmitEvent<HTMLFormElement>` et `surChangement` à
+  `SyntheticEvent<HTMLFormElement>`, car il est branché sur `onChange`, où `SubmitEvent`
+  n'a pas de sens. `FormulaireFiltresAnnuaire.tsx` (phase 2) garde `FormEvent`.
+- **`NEXT_PUBLIC_SITE_URL` manquante ou vide** : `site.url` valait `http://localhost:3000`
+  en production, sans erreur, ou une chaîne vide. Corrigé par `resoudreUrlSite`
+  (`src/config/site.ts`, test nouveau `src/config/site.test.ts`), voir « Décisions ».
+- **Polices des images d'aperçu** : copiées dans `assets/polices/` (test nouveau
+  `src/lib/og/polices.test.ts`), voir « Décisions ».
+- **Bleu dans les champs de date de l'agenda** (trouvé par la contre-vérification du
+  4 novembre ; absent des contrôles du 31 octobre, dont l'outil s'arrêtait avant ces champs et
+  lisait les styles calculés, pas ce que Chromium peint) : au focus, clavier comme souris, le
+  segment jj, mm ou aaaa était surligné en bleu système `rgb(0,120,215)`, et l'icône du
+  calendrier portait un anneau sombre. Corrigé dans `src/app/globals.css` : segment en
+  `or-clair` et texte `encre`, par `:focus-within` (`:focus` et `:focus-visible` sont sans
+  effet sur ces pseudo-éléments) ; anneau de l'icône en `or`. Seule sa couleur se règle, sa
+  largeur reste celle du navigateur. Test de non-régression dans `src/lib/charte.test.ts`.
+  Limites : mesuré dans Chromium seulement (ni Firefox ni Safari) ; le calendrier déroulant
+  ouvert par l'icône reste dessiné par le navigateur.
+- **Non corrigés, sur décision** : `/go/emplacement` d'un événement non publié et lettres
+  absentes des polices, voir « À valider par le porteur (phase 3) ».
+
+### Décisions
+
+- **Plage d'un événement dans les agendas externes** (.ics et Google Agenda, une
+  seule fonction, `plageEvenement`) : sans heure de début, ou sur plusieurs jours,
+  journées entières (`DTSTART;VALUE=DATE`, `DTEND;VALUE=DATE` = lendemain du dernier
+  jour) ; un seul jour AVEC une heure : `DTSTART;TZID=Africa/Porto-Novo`, bloc
+  `VTIMEZONE` (UTC+1, sans heure d'été), fin = début + 1 h. La table `evenements` n'a
+  pas de colonne `heure_fin`, et la RFC 5545 interdit de mélanger un début daté-heure
+  et une fin en date seule : un congrès de trois jours avec une heure de début est
+  donc exporté en journées entières, l'heure écrite dans la description (« Début le
+  12 mars 2027 à 8 h 30. »). Écart à la lettre de la section 10.2 (« sinon heure avec
+  TZID ») : voir « À valider par le porteur (phase 3) ».
+- **Fichier .ics** : UID `{id}@citesavante.com`, PRODID `-//Cite Savante//Agenda//FR`,
+  `LOCATION` omis sans lieu, `DESCRIPTION` = résumé, heure de début s'il y a lieu,
+  « Détails : {adresse de la fiche} » ; CRLF partout ; lignes pliées à 75 octets
+  sans couper un caractère multi-octets. Route : slug mal formé → 404 sans aucune
+  lecture ; lecture impossible → 503 ; événement absent ou non publié → 404 ;
+  génération impossible → 500 ; textes d'erreur en français, en texte brut ;
+  `X-Robots-Tag: noindex` partout ; `Cache-Control: public, max-age=300` en 200,
+  `no-store` sinon. Lien de la fiche en `<a>` natif, `rel="nofollow"`, SANS attribut
+  `download` (il ferait seulement enregistrer le fichier sur certains téléphones).
+- **Trois liens externes hors de la passerelle `/go`** : Google Agenda, WhatsApp et
+  « Voir sur la carte » (recherche OpenStreetMap, section 8.4). Ce ne sont pas des
+  sites d'organisations ou d'annonceurs (section 10.1), leur adresse est construite
+  par le site et jamais saisie, et `DESTINATIONS_PASSERELLE` n'a pas de destination
+  pour eux. Section 6 respectée : `target="_blank"`,
+  `rel="noopener noreferrer nofollow"`, mention visible « site externe, nouvel
+  onglet ». Tous les autres liens sortants (« S'inscrire », « Site de l'événement », bannière) passent par `/go`, en
+  `<a>` natif, même onglet.
+- **Cache** (règle de rendu, décision 20) : trois listes par jour seulement (événements
+  à venir, les 500 événements passés les plus récents, échéances à venir), plus la
+  liste des slugs publiés et une entrée par fiche publiée ; filtres, mois du calendrier,
+  période `du`–`au` et suggestions calculés en mémoire ; recherche `q` par la fonction
+  SQL `rechercher`, non mise en cache ; un slug inventé ne crée aucune entrée (fiche,
+  .ics, image d'aperçu). Hypothèse : quelques centaines d'événements à venir (plafond
+  de 1 000 lignes de PostgREST) ; au-delà, paginer côté base.
+- **Mise en avant** (section 7) : emplacements `evenement_en_avant` actifs ce jour-là,
+  appliqués aux seuls événements à venir ; bloc « Événements mis en avant » en tête de
+  la liste, mention « Mis en avant » écrite en clair (texte bordeaux, fanion or décoratif)
+  sur chaque carte et dans le calendrier (grille et liste des jours), une phrase renvoie à
+  `/visibilite` ; un événement mis en avant n'est pas répété dans son mois. Archives :
+  jamais de mise en avant.
+- **Événement à cheval sur deux mois** : dans la liste, il figure dans le mois de son
+  DÉBUT (sa période est écrite sur la carte, une phrase le dit sous le titre) ; dans le
+  calendrier, sur chacun de ses jours, donc dans les deux grilles, avec la mention
+  « Suite » à partir du deuxième jour ; seule sa première apparition est atteinte par
+  la touche Tab.
+- **Calendrier** : fenêtre de navigation de 12 mois en arrière et 24 en avant (mois
+  hors fenêtre ou invalide : mois en cours) ; liens de mois qui gardent les filtres et
+  visent l'ancre `#calendrier` ; « Revenir au mois en cours » seulement s'il n'est ni
+  affiché ni voisin. Un mois passé n'est complet que dans la limite des 500 archives.
+- **Filtres de l'agenda** : `du` > `au` → dates échangées ; un événement est retenu
+  s'il CHEVAUCHE la période ; `gratuit` actif seulement pour « 1 », « true » ou
+  « oui » ; `modalite` exacte (« en ligne » ne retient pas les événements hybrides) ;
+  discipline ou ville inconnue retirée des filtres effectifs ; en vue calendrier,
+  `periode` ramenée à « à venir ». Avec JavaScript, listes et case « gratuits »
+  envoient le formulaire après 300 ms ; les dates partent seulement avec « Filtrer »
+  (la saisie au clavier émet des changements intermédiaires). Les formulaires clients
+  n'importent pas `utils/agenda.ts` (pas de `date-fns` dans le code du navigateur).
+- **Métadonnées** : `/agenda` sans filtre indexé, canonique `/agenda` ; archives sans
+  filtre indexées, canonique `/agenda?periode=passes` (écart volontaire : avec un
+  canonique `/agenda`, les archives seraient un doublon jamais indexé) ; toute variante
+  filtrée et toute page du calendrier en `noindex, follow` ; `/echeances` canonique
+  `/echeances`, variantes filtrées en `noindex, follow` ; fiche : canonique
+  `/agenda/{slug}`, « Événement introuvable » + `noindex` si absente.
+- **Bannière de l'agenda** : `<aside>` nommé par la mention « Publicité », écrite en
+  clair ; lien `/go/emplacement/{id}?from=/agenda`, `<a>` natif,
+  `rel="sponsored noopener noreferrer"` ; sans visuel, bannière typographique (fond
+  crème soutenu, filet or) ; sans lien `https://` sûr, non cliquable. Visuel
+  recommandé : 1 200 × 300 px.
+- **Fiche d'un événement passé** : bandeau « Cet événement a eu lieu le … » (ou « du …
+  au … ») avec un lien vers les suggestions (prochains événements de la même
+  discipline, 4 au plus, `listerSuggestions`) ; « S'inscrire » et « Ajouter à mon
+  agenda » masqués (ajout à la section 8.4) ; « Site de l'événement » et le partage
+  restent.
+- **Dates clés** : toutes les échéances, passées comprises ; une échéance passée est
+  barrée ET porte la mention écrite « Date passée » ; urgente : badge or « Clôture
+  … » ; au-delà de 7 jours : « Clôture dans N jours » en texte simple.
+- **Participation** : « Participation gratuite », tarifs, crédits FMC, contact
+  (`mailto:` si l'adresse est sûre) ; un événement non gratuit sans tarifs n'est
+  jamais dit « payant ». Le bloc Présentation et affiche n'est pas rendu sans
+  description ni affiche.
+- **JSON-LD `Event`** : journées entières en dates seules (`endDate` = dernier jour) ;
+  un seul jour avec une heure : début et début + 1 h en `+01:00` ; `Place` et
+  `PostalAddress` (`BJ`), `VirtualLocation`, ou les deux (hybride) ; organisatrices et
+  co-organisatrices seulement ; `offers` à 0 XOF si gratuit ; AUCUNE adresse `/go`
+  (un robot y créerait de faux clics).
+- **Images d'aperçu** : polices `.woff` (le moteur de `next/og` ne lit pas le `.woff2`)
+  lues par `fs` une fois par processus, sans appel réseau ; textes nettoyés des
+  caractères absents des polices (un segment réduit à rien est retiré avant l'assemblage,
+  `nettoyerSegmentApercu`), coupés à la fin d'un mot, taille selon la longueur,
+  lignes bornées avec « … » ; couleurs de `src/lib/charte.ts` seulement, aucun texte
+  or ; slug inconnu ou non publié : image générique (200) ; lecture impossible : image
+  générique en `no-store`, erreur journalisée ; `Cache-Control` de 5 minutes au lieu
+  de l'en-tête d'un an d'`ImageResponse` ; texte de remplacement fixe
+  (`generateImageMetadata` ajouterait un `generateStaticParams`, donc une lecture de
+  la base au build).
+- **Échéances** : semaines du lundi au dimanche ; sous « Cette semaine » et « Semaine
+  prochaine », une précision (« Jusqu'au dimanche 1er novembre 2026 », « Du 2 au
+  8 novembre 2026 ») ; « Organisé par {sigle} » = organisateur principal (première
+  organisatrice, sinon co-organisatrice ; partenaires exclus).
+- **Pas de `loading.tsx`** sous `app/agenda/` ni `app/echeances/` (même raison que
+  l'annuaire : statut 404 réel d'une fiche inexistante).
+- **404 d'une fiche événement** : même patron et même limite que la fiche organisation
+  (Next.js 16.3.6 : statut 404, titre et `noindex` justes, corps vide sans
+  JavaScript) ; à corriger en phase 5 dans `proxy.ts` avec `/societes/{slug}`.
+- **Polices des images d'aperçu copiées dans `assets/polices/`** (4 novembre 2026 ;
+  complète la décision de la phase 0 sur `@fontsource`, section « Décisions » générale).
+  Les quatre `.woff` (Fraunces 500 et 700, EB Garamond 400 et 500, sous-ensemble latin,
+  103 792 octets) et les deux licences SIL OFL 1.1 sont dans le dépôt ;
+  `src/lib/og/polices.ts` lit ces copies. `@fontsource` reste la source des polices du site
+  (`next/font`) et la référence des copies : `src/lib/og/polices.test.ts` échoue si une
+  copie n'est plus identique, octet pour octet, au fichier du paquet installé (à recopier
+  après une mise à jour du paquet). C'est une copie de fichiers, pas une dépendance.
+  **Correction d'une hypothèse** : le traçage du build contenait déjà les quatre `.woff`
+  sous leurs vrais chemins `.pnpm` (« Vérifications (intégration) ») ; le risque était donc
+  plus étroit qu'annoncé le 31 octobre : seul le passage par le lien symbolique
+  `node_modules/@fontsource/…`, que le code lisait, ne pouvait pas être confirmé avant un
+  vrai déploiement. La copie reste retenue : elle supprime cette dépendance pour environ
+  100 Ko. Preuve du traçage : « Vérifications de fin de phase ». Le comportement réel sur
+  Vercel reste à confirmer au premier déploiement.
+- **Heure de début à `24:00:00` : considérée comme absente** (4 novembre 2026). Postgres
+  admet cette valeur dans une colonne `time`, et le traitement était incohérent : ramenée
+  au lendemain 00:00 sur un seul jour, `2027-03-12T24:00:00+01:00` et « à 24 h » sur
+  plusieurs jours. `heureConnue` (`src/lib/utils/dates.ts`) est désormais le point d'entrée
+  unique : 24 h ou plus vaut `null`, partout (`plageEvenement`, donc .ics, Google Agenda,
+  JSON-LD et description ; `InformationsEvenement` ; `texteDatesApercu` ; tri
+  `comparerEvenementsChronologique`). Le report au lendemain est retiré : il changerait la
+  date de l'événement. `lireHeure` et `formaterHeure` refusent `24:00:00` ; une valeur mal
+  formée lève toujours une erreur. Tout futur lecteur de `heureDebut` passe par
+  `heureConnue`. La saisie sera bornée dans les formulaires (voir « Reste à faire »).
+- **`NEXT_PUBLIC_SITE_URL`** (4 novembre 2026, `resoudreUrlSite`, `src/config/site.ts`) :
+  renseignée, elle prime, sans « / » final ; absente ou vide, `site.url` vaut
+  `https://citesavante.com` en production et `http://localhost:3000` hors production. La
+  variable reste **obligatoire sur Vercel** : `envPublic()` (`src/lib/env.ts`) la refuse
+  absente ou invalide, donc toute lecture de la base échoue sans elle. Le repli ne protège
+  que ce qui n'appelle jamais `envPublic()`, comme `metadataBase` (`src/app/layout.tsx`).
+
+### Vérification sur données réelles
+
+**Résultats du 31 octobre 2026, AVANT les corrections de fin de phase** (contre-vérification
+après corrections : voir plus bas). Build avec `.env.local`, `next start` sur le port 3131,
+API locale avec `seed_demo.sql`. Les deux agents de vérification ont été coupés par une panne
+réseau juste avant leur compte rendu : ce bilan a été reconstitué depuis leurs journaux.
+
+- **Liste et filtres de `/agenda`** : 56 cas conformes au SQL, 0 écart (23 à venir et
+  5 archives, chacun avec et sans JavaScript) ; paramètres hostiles : aucune réponse autre
+  que 200.
+- **Calendrier** : conforme au SQL jour par jour dans les deux mois de l'événement à
+  cheval ; la navigation garde les filtres, avec et sans JavaScript ; liste des jours à
+  360 px.
+- **Fiche du congrès de pédiatrie** : contenu de la section 8.4 conforme à la base ; JSON-LD
+  `Event` et `BreadcrumbList` analysés ; liens Google Agenda et WhatsApp décodés ; événement
+  passé et suggestions ; slug inconnu ou non publié : 404.
+- **Passerelle `/go`** : clics réels, avec et sans JavaScript, depuis la fiche et depuis la
+  bannière : exactement une ligne par clic, `page_origine` exacte, 302 avec UTM, `noindex`,
+  `no-store`.
+- **Fichier .ics** : en-têtes conformes ; analyse par `ical.js` sans erreur ; CRLF et
+  75 octets respectés ; journée entière, heure unique (TZID et `VTIMEZONE`) et passage de
+  minuit corrects.
+- **`/echeances`** : 18 cas conformes au SQL (9 avec et 9 sans JavaScript). Un premier
+  passage avait échoué uniquement parce qu'un autre agent insérait des données [TEST] en
+  même temps.
+- **Images d'aperçu** : 200, `image/png`, 1200 × 630, regardées à l'œil ; slug inconnu, en
+  majuscules ou non publié : image générique, sans erreur 500 ; balises `og:image` et
+  `twitter` vers ces images.
+- **Rendu à 360 et 1280 px** : aucun défilement horizontal, 1 `h1`, 1 `main`, 0 lien
+  imbriqué, 0 champ sans étiquette ; captures jugées conformes. Contour or de 2 px sur les
+  éléments atteints au clavier par cet outil, qui s'arrêtait au premier doublon et ne couvrait
+  qu'une partie de la page (parcours complet : voir la contre-vérification du 4 novembre).
+- **Couleurs calculées** : rien hors des 7 jetons et de leurs variantes d'opacité (`or/0.5`,
+  `or/0.6`, `encre/0.6`). Le « fill noir » signalé par la mesure est celui de `defs/pattern`
+  d'un SVG, jamais peint : faux positif.
+- **Lighthouse 13.5.0, catégorie accessibilité seule : 100 sur les 6 mesures** :
+  `/agenda`, `/agenda/demo-congres-pediatrie-cotonou` et `/echeances`, chacune en mobile
+  (412 px) et en ordinateur (1350 px). Deux passages, mêmes scores : le premier avec un
+  avertissement de page trop lente sur la fiche en ordinateur, le second, préchargements
+  `*_rsc=*` bloqués, sans aucun avertissement. La performance n'a pas été mesurée ce jour-là
+  (première mesure : 4 novembre).
+- **Console et journaux** : seuls les préchargements 404 attendus (`/referencer`,
+  `/a-propos`, `/contact`, `/visibilite`, `/mentions-legales`, `/confidentialite`…).
+
+**Relecture adversariale du 31 octobre 2026** (même build) :
+
+- **.ics** : emoji et lettres multi-octets bien pliés à 75 octets ; « END:VEVENT » et retours
+  à la ligne neutralisés dans le titre, le lieu et la description ; événement sur deux années
+  correct ; slug hostile (guillemet, CRLF, majuscules) : 404, donc aucune injection dans
+  `Content-Disposition`.
+- **Liens Google Agenda, WhatsApp, OpenStreetMap** : aucun paramètre injectable.
+- **Calendrier et regroupements** : fuseau autour de minuit UTC, 1er janvier, année
+  bissextile, dimanche et lundi, mois invalides : corrects.
+- **Cache** : saisies libres et slugs inventés ne créent aucune entrée (12 puis 13 au premier
+  passage, liste bornée des organisations, puis 13 stable).
+- **Événement non publié** : 0 occurrence (agenda, calendrier, échéances, suggestions, fiche
+  société, .ics, image d'aperçu générique), hors écho de la recherche saisie.
+- **JSON-LD** : titre contenant `</script>` correctement échappé, 0 script injecté.
+- **`/go`** : `vers=//evil.example` : 404 ; `from=https://evil.example/x` : `page_origine`
+  nulle ; slug inventé dans `from` : nul ; `HEAD`, préchargement et `Sec-Purpose` ne comptent
+  aucun clic.
+- **Menu « Ajouter à mon agenda »** : utilisable au clavier avec et sans JavaScript.
+- **Couleurs et icônes** : aucune couleur en dur ni bibliothèque d'icônes dans les fichiers de
+  la phase 3.
+- **`retry` dans `error.tsx`** : conforme à la documentation de Next.js 16 ; l'avertissement
+  de l'extension TypeScript (71007) est un faux positif.
+
+**Relecture de fin de phase du 4 novembre 2026** (lecture du code et sondes, sans navigateur,
+AVANT les corrections) :
+
+- **Emoji et pictogrammes Unicode** : aucun dans l'interface.
+- **Textes anglais** : aucun visible (`alt`, `aria-label`, `title`, `placeholder`, messages
+  d'erreur rendus, métadonnées).
+- **Grille du calendrier** : table native, 7 en-têtes `scope="col"`, aucun rôle explicite ;
+  jour courant signalé aussi par un cadre de 2 px, une pastille, `aria-current="date"` et un
+  texte masqué ; une seule occurrence tabulable par événement. Échéances passées : `<s>` et
+  mention écrite « Date passée ».
+- **Sept points du prompt, sections 8.3, 8.4, 8.5 et 10.2** : conformes, hors deux écarts à
+  la lettre déjà déclarés (voir « À valider par le porteur (phase 3) ») ; défauts trouvés :
+  voir « Corrections de fin de phase ».
+
+**Contre-vérification du 4 novembre 2026** (`next start`, après les corrections ; les outils du
+31 octobre ont été relancés, avec dates et identifiants adaptés à la base reconstruite) :
+
+- **Liste et filtres** : 56 cas OK, 0 KO contre le SQL ; 26 paramètres hostiles, tous en 200.
+- **Calendrier** : 0 écart sur novembre 2026, décembre 2026 et avril 2027, à 360 et 1280 px ;
+  navigation correcte avec et sans JavaScript.
+- **Fiche** : 78 contrôles OK, 0 KO contre la base. **Passerelle** : 47 OK, 0 KO, une ligne par
+  clic réel. **Fichier .ics** : 9 OK, 0 KO, analyse par `ical.js` sans erreur. **Échéances** :
+  18 OK, 0 KO.
+- **Rendu** : aucun défilement horizontal sur 14 combinaisons page et largeur. Douze captures
+  regardées, conformes à la charte au repos.
+- **Corrections prouvées sur le serveur réel** : heure `24:00` absente partout (fiche, .ics,
+  Google Agenda, image) ; plus de séparateur orphelin sur les images d'aperçu ; rôle lu avec son
+  séparateur ; « (site externe) » dans le nom accessible de la bannière avec visuel (l'image
+  elle-même a répondu 404, faute de stockage local) ; polices lues dans `assets/polices/`, sans
+  aucune connexion sortante ; mention « Mis en avant » visible dans la grille, sans débordement
+  à 768 px.
+- **Parcours clavier complet** (outil nouveau, 14 combinaisons) : contour or sur tous les arrêts,
+  sauf l'icône calendrier des deux champs de date, cause du défaut ci-dessous.
+- **Défaut trouvé et corrigé : bleu système dans les champs de date** (voir « Corrections de fin
+  de phase »). Après correction, build final, 60 mesures en pixels (`/agenda` en liste, en
+  calendrier et en archives ; 360 et 1280 px ; les deux champs ; trois segments, icône et clic
+  souris) : `rgb(0,120,215)` absent des 60. L'or clair est présent sur les 48 mesures de segment
+  et de clic, l'or sur les 12 mesures d'icône. Les rares pixels bleutés restants sont le lissage
+  du texte « dd/mm/yyyy », identique dans le champ au repos.
+- **Lighthouse 13.5.0, accessibilité, sur ce build final** : 100 sur les 6 mesures, sans
+  avertissement.
+- **Lighthouse 13.5.0, performance mobile, première mesure, sur ce build final** (limitation
+  simulée, trois passages par page, préchargements `*_rsc=*` bloqués, serveur et API sur le
+  poste) : `/agenda` 79, 86 et 89 ; fiche du congrès de pédiatrie 75, 71 et 73 ; `/echeances` 78,
+  79 et 87. **Sous le seuil de 90 sur les trois pages.** Ce seuil relève de la phase 7 (prompt,
+  point 4) et non de la phase 3. Chiffres à prendre avec prudence : `benchmarkIndex` de 525 à 619
+  sur ce poste, machine lente que la limitation « × 4 » pénalise ; à remesurer après déploiement.
+  Relevé utile pour la phase 7, sur les neuf passages : CLS à 0 ; LCP de 2,2 à 3,4 s (élément :
+  du texte, le `h1` sur la fiche, le paragraphe d'introduction sur `/agenda`) ; temps de blocage
+  de 250 à 840 ms. Sur la fiche, le paquet `3qvpsck1iq38x.js` (72 Ko, 38 % inutilisés) domine le
+  démarrage ; 14 Ko de JavaScript ancien sont signalés.
+- **État laissé** : `clics_sortants` à 0, séquence à 5, aucun serveur ni navigateur restant.
+
+### Critères d'acceptation de la phase
+
+1. « Le fichier .ics s'importe correctement dans Google Agenda et dans l'agenda d'un
+   téléphone » : **à faire par le porteur**, qui s'est réservé cet essai ; marche à suivre
+   dans « À tester par le porteur ». Preuves indirectes : analyse par `ical.js` sans erreur,
+   CRLF et 75 octets respectés (31 octobre) ; tests de `src/lib/utils/ics.test.ts`
+   (4 novembre, « Vérifications de fin de phase »).
+2. « Partager une fiche sur WhatsApp affiche l'image d'aperçu » : **à faire après
+   déploiement**, noté dans « À tester par le porteur ». Preuves indirectes : images servies
+   (200, `image/png`, 1200 × 630) et balises `og:image` et `twitter` présentes (31 octobre).
+3. « Un événement de plusieurs jours sur deux mois s'affiche correctement dans les deux
+   vues » : **conforme, reconfirmé après la correction de la grille** (contre-vérification du
+   4 novembre, 0 écart). Calendrier : conforme au SQL jour par jour dans
+   les deux mois (31 octobre) ; relecture du 4 novembre sur
+   `demo-colloque-multidisciplinaire-2mois` (29 novembre au 3 décembre 2026) : en décembre,
+   4 liens dont 1 tabulable, mention « Suite ». Liste : l'événement figure dans le mois de
+   son début, sa période est écrite sur la carte et une phrase le dit sous le titre (voir
+   « Décisions »).
+
+### Points à vérifier sur données réelles
+
+Faits par les agents sur `next dev` et l'API locale (`seed_demo.sql`) : statuts 200
+et 404 des fiches (publiée, passée, en ligne, en attente, inexistante, en
+majuscules) ; route .ics (200, CRLF, pliage, en-têtes ; 404 en français) ; images
+d'aperçu servies par les vraies routes et regardées ; `/echeances` (16 échéances,
+4 urgentes ; filtres) ; agenda à 360, 768 et 1280 px par mesures, sans défilement
+horizontal ; colloque [DÉMO] du 30 octobre au 3 novembre dans les deux vues.
+
+État au 4 novembre 2026 des contrôles prévus sur `next start` (résultats datés dans
+« Vérification sur données réelles ») :
+
+1. **`Cache-Control`** de `/agenda/{slug}/ics` et des images d'aperçu : FAIT par
+   l'intégration sur `next start` (« Vérifications (intégration) ») ; à revoir
+   seulement derrière le cache de Vercel après déploiement.
+2. **Polices des images d'aperçu au déploiement** : OUVERT jusqu'au premier déploiement.
+   Le code lit désormais `assets/polices/`, présent dans le traçage du build (« Vérifications
+   de fin de phase »). Au premier déploiement Vercel : ouvrir
+   `/agenda/{slug}/opengraph-image` et `/societes/{slug}/opengraph-image`, vérifier qu'une
+   image est servie et qu'aucune erreur `ENOENT` n'apparaît dans les journaux.
+3. **Rendu à l'œil** à 360 et 1280 px de `/agenda` (liste, calendrier, archives), d'une
+   fiche à venir, d'une fiche passée et de `/echeances` : FAIT le 31 octobre.
+4. **Passerelle depuis la fiche et la bannière** : FAIT le 31 octobre (une ligne par clic,
+   `page_origine` exacte ; `HEAD` et préchargements non comptés).
+5. **Sans JavaScript** : filtres de l'agenda et des échéances, menu « Ajouter à mon
+   agenda » (`<details>`), navigation des mois : FAIT le 31 octobre.
+6. **Lighthouse** : accessibilité FAITE (100 sur `/agenda`, une fiche événement et
+   `/echeances`, seuil de 95 ; refaite le 4 novembre sur le build final). **Performance mobile
+   d'au moins 90 sur l'agenda et une fiche (section 15) : MESURÉE le 4 novembre en local, SOUS
+   LE SEUIL (71 à 89).** À traiter en phase 7, qui porte ce seuil.
+7. **JSON-LD `Event`** d'une fiche passé à l'outil de test des résultats enrichis (en
+   ligne) : OUVERT, analysé seulement en local.
+8. **Affiches et visuels de bannière** : OUVERT ; l'API locale ne sert pas le stockage ;
+   vérifiables seulement avec Supabase local sous Docker ou le projet distant.
+
+### À tester par le porteur
+
+**Import du fichier .ics** (critère d'acceptation) :
+
+1. Ouvrir une fiche à venir, par exemple `/agenda/demo-congres-pediatrie-cotonou`, puis
+   « Ajouter à mon agenda » > « Fichier .ics ».
+2. **Google Agenda sur ordinateur** : télécharger le fichier (lien « Fichier .ics »),
+   puis dans Google Agenda (calendar.google.com) : roue dentée > Paramètres > Importer
+   et exporter > Importer ; choisir le fichier téléchargé et l'agenda de destination,
+   puis « Importer ».
+3. **Android** : toucher « Fichier .ics », puis ouvrir le fichier téléchargé (depuis la
+   notification ou l'application Fichiers) avec Google Agenda et confirmer l'ajout.
+4. **iPhone** : ouvrir la fiche dans Safari, toucher « Fichier .ics » ; Safari propose
+   l'événement : « Ajouter tout » (ou « Ajouter au calendrier »).
+5. Vérifier dans l'agenda : congrès aux dates affichées sur la fiche, en journées entières
+   (ces dates changent à chaque chargement de `seed_demo.sql`), titre, lieu « Cotonou,
+   Bénin », description terminée par « Détails : » et l'adresse de la fiche.
+6. Refaire l'essai avec un événement d'un seul jour qui a une heure de début : il doit
+   apparaître à l'heure de Porto-Novo (UTC+1), pour une durée d'une heure. Le lien
+   « Google Agenda » du même menu doit ouvrir un formulaire prérempli identique.
+
+**Aperçu WhatsApp** (critère d'acceptation) : à tester APRÈS DÉPLOIEMENT, sur
+l'adresse publique (WhatsApp doit pouvoir lire la page et son image) : partager une
+fiche d'événement par « Partager sur WhatsApp » et vérifier que l'image d'aperçu
+s'affiche. Prérequis : `NEXT_PUBLIC_SITE_URL` = adresse de production, variable obligatoire
+sur Vercel (voir « Décisions »).
+
+### À valider par le porteur (phase 3)
+
+Rien de bloquant :
+
+- **Événement de plusieurs jours avec une heure de début** : exporté en journées
+  entières (heure dans la description), faute d'heure de fin en base ; un événement
+  d'un seul jour avec une heure dure 1 h par défaut (voir « Décisions »).
+- **Canonique des archives** : `/agenda?periode=passes`, indexées (et non `/agenda`).
+- **Fiche d'un événement passé** : « S'inscrire » et « Ajouter à mon agenda »
+  masqués.
+- **« Voir sur la carte »** : lien direct vers OpenStreetMap, hors `/go` (comme Google
+  Agenda et WhatsApp).
+- **Archives limitées aux 500 événements passés les plus récents** (archives
+  complètes par année prévues en P1, section 17.3) ; calendrier navigable 12 mois en
+  arrière et 24 en avant.
+- **Compteur de la vue calendrier** : l'en-tête donne le total des événements à venir ;
+  le nombre du mois est dans le résumé lu par les lecteurs d'écran.
+- **Images d'aperçu** : quelques caractères absents des polices locales sont réduits
+  (« Ÿ » → « Y », « ź » → « z ») et les lettres propres au fon et au yoruba (ɔ, ɛ, ɖ)
+  sont retirées SUR L'IMAGE seulement ; la page les affiche.
+- **Lettres absentes des polices, exemple** : sur l'image, « Congrès ɖ’Abomey » devient
+  « Congrès ’Abomey » ; comportement figé par un test (`src/lib/og/texte.test.ts`).
+  Recommandation : garder cette réduction pour l'instant, les noms officiels s'écrivant en
+  orthographe française. Si des titres en fon ou en yoruba apparaissent, ajouter des
+  sous-ensembles ne suffira pas : d'après la table des caractères des fichiers installés
+  (`@fontsource` 5.3.0), EB Garamond a ɔ, ɛ, ɖ dans `latin-ext` et ẹ, ọ dans `vietnamese`,
+  mais Fraunces, police des titres, n'a ɔ, ɛ, ɖ dans aucun de ses trois sous-ensembles
+  (`latin`, `latin-ext`, `vietnamese`, graisses 500 et 700). Il faudrait alors une police
+  de repli pour ces lettres, à essayer à ce moment-là. Limite connue : un titre ou un sigle
+  dessiné seul sur son image peut se réduire à un séparateur (« ɖ-ɔ » donne « - »), cas
+  rare.
+- **`/go/emplacement/{id}` d'un emplacement `evenement_en_avant` actif dont l'événement
+  n'est pas publié** : répond 302 et compte un clic (relevé le 31 octobre ;
+  `src/lib/passerelle/donnees.ts` ne lit que l'emplacement). Conforme à la section 10.1
+  (« active pour un emplacement ») ; aucune donnée de l'événement ne fuit et l'emplacement
+  n'apparaît sur aucune page. Non corrigé.
+- **Ajouts au-delà de la lettre du prompt** (relecture du 4 novembre, aucun n'est un défaut) :
+  « Revenir au mois en cours », partenaires sur la fiche, bloc Présentation, `offers`,
+  `eventStatus` et `image` dans le JSON-LD, liens « Annoncer un événement » (agenda et
+  échéances), phrase renvoyant à `/visibilite`, précision sous les groupes d'échéances.
+- **Libellé libre d'une échéance** : s'il existe, la ligne de `/echeances` l'affiche à la
+  place du libellé du type, comme le prévoit le schéma (« facultatif ; sinon libellé par
+  défaut du type ») ; avec un type « bourse » et le libellé « Aide au voyage », le mot
+  « Bourse » n'y figure donc pas.
+- **Icône du sélecteur de date** (`<input type="date">`) : dessinée par le navigateur, sombre,
+  hors jetons (pas bleue). Le calendrier déroulant qu'elle ouvre l'est aussi : il n'a pas été
+  contrôlé et peut sortir de la charte selon le navigateur.
+- **Liens vers des pages pas encore construites** : « Annoncer un événement »
+  (`/referencer/evenement`, phase 5), `/visibilite` (phase 5), `/disciplines/{slug}`
+  (phase 4) mènent à la page 404 du site jusqu'à leur phase.
+
+### Vérifications (intégration)
+
+Le 31 octobre 2026, dans cet ordre, après les modifications de l'intégration :
+
+- **`pnpm typecheck`** : code 0, aucune erreur.
+- **`pnpm test`** : code 0, **36 fichiers, 863 tests, tous passés** (90 s). Nouveaux
+  fichiers de la phase : `ics`, `partage`, `calendrier`, `agenda`, `texte`
+  (`src/lib/utils/`), `agenda.test.tsx`, `echeances.test.tsx`, `fiche.test.tsx`,
+  `utilitaires.test.ts` et `donneesStructurees.test.ts` de la fiche événement,
+  `fichierAgenda.test.ts`, `og/donnees.test.ts`, `og/apercus.test.tsx` (rendu PNG
+  réel), `og/texte.test.ts` ; complétés : `dates`, `evenements`, `cartes`,
+  `analyse`, `passerelle`.
+- **`pnpm build` avec `.env.local`** (« Environments: .env.local ») : code 0 ; `/`,
+  `/_not-found`, `/charte`, `/icon.svg` en `○` ; `/agenda`, `/agenda/[slug]`,
+  `/agenda/[slug]/ics`, `/agenda/[slug]/opengraph-image`, `/echeances`,
+  `/go/[type]/[id]`, `/societes`, `/societes/[slug]`,
+  `/societes/[slug]/opengraph-image` en `ƒ`. Aucune lecture pendant le build :
+  `.next/cache/fetch-cache` vide à la fin (une lecture de `src/lib/requetes/` y aurait
+  écrit son entrée).
+- **Polices des images d'aperçu dans le traçage du build**
+  (`.next/server/app/{agenda,societes}/[slug]/opengraph-image/route.js.nft.json`) :
+  les quatre `.woff` y figurent, sous leur chemin RÉEL
+  (`node_modules/.pnpm/@fontsource+…@5.3.0/node_modules/@fontsource/…/files/…`) ; le
+  lien symbolique `node_modules/@fontsource/{fraunces,eb-garamond}` que le code lit
+  (`process.cwd()` + `node_modules/@fontsource/…`) n'y figure PAS, alors que ceux de
+  `next` et `react` y sont. Sous `next start` (même disque), les images sont
+  servies ; sur un déploiement qui ne recrée pas ce lien, la lecture des polices
+  échouerait (la route répondrait par une erreur, sans image). À vérifier au premier
+  déploiement (« Points à vérifier sur données réelles », point 2) ; remèdes possibles,
+  non appliqués (`next.config.ts` est un fichier partagé, et la phase 0 a choisi les
+  fichiers de `@fontsource`) : copier les quatre `.woff` (environ 100 Ko) dans le dépôt
+  et les lire de là, comme l'exemple de la documentation (`assets/`), ou
+  `outputFileTracingIncludes` pour ces deux routes. Le premier remède a été appliqué le
+  4 novembre 2026 (voir « Décisions »).
+- **`next start -p 3141`** sur ce build (`.env.local` tel quel, API locale ; serveur
+  arrêté ensuite) : `/agenda/demo-congres-pediatrie-cotonou/ics` → 200,
+  `cache-control: public, max-age=300`, `content-type: text/calendar; charset=utf-8`,
+  `content-disposition: attachment; filename="demo-congres-pediatrie-cotonou.ics"`,
+  `x-robots-tag: noindex` ; 18 lignes, toutes en CRLF, 75 octets au plus ; UID
+  `…@citesavante.com`, `DTSTART;VALUE=DATE:20270329`, `DTEND;VALUE=DATE:20270401` ;
+  `/agenda/inexistant/ics` → 404, `no-store`, texte brut ; images
+  `/agenda/demo-congres-pediatrie-cotonou/opengraph-image`,
+  `/societes/demo-sbmi/opengraph-image` et `/agenda/inexistant/opengraph-image` →
+  200, `image/png`, `public, max-age=300, s-maxage=300, stale-while-revalidate=3600`
+  (Next.js ne remplace pas ces en-têtes) ; `/agenda`, `/agenda?periode=passes`,
+  `/echeances`, deux fiches → 200, un `h1`, un seul `<main>` (celui du layout) ;
+  `/agenda?vue=calendrier&mois=2026-11` → 200, `noindex, follow` ;
+  `/agenda/inexistant` → 404, `noindex` (corps vide sans JavaScript, limite connue) ;
+  `og:image` présent sur la fiche (adresse en `http://localhost:3000`, valeur locale
+  de `NEXT_PUBLIC_SITE_URL`).
+- **`pnpm build` sans `.env.local`** (renommé le temps du build puis remis ; empreinte
+  SHA-256 identique avant et après ; aucune variable Supabase ni `NEXT_PUBLIC_*` dans
+  l'environnement du shell) : code 0, sans ligne « Environments », même tableau des
+  routes. Compteurs de lecture des tables de `citesavante_api` inchangés pendant ce
+  build.
+- **`pnpm lint`** : code 0, 0 erreur, 0 avertissement.
+- **`pnpm exec prettier --check`** sur les 81 fichiers de la phase (code, tests,
+  `PROGRESS.md`) : code 0 ; aucun octet CR.
+- **`PG_DB=citesavante_integ3 bash scripts/valider-base.sh`** : « VALIDATION
+  RÉUSSIE », 7 migrations rejouées sans erreur, `seed.sql` et `seed_demo.sql` chargés,
+  6 fichiers, 466 vérifications, 0 échec (131 s) ; base jetable supprimée ensuite.
+  Base `citesavante_api` laissée sans donnée de test (`clics_sortants` à 0,
+  20 événements, 15 organisations).
+
+### Vérifications de fin de phase
+
+Le 4 novembre 2026, dans cet ordre, après les corrections :
+
+- **`pnpm typecheck`** : code 0, aucune erreur (37 s).
+- **`pnpm test`** : code 0, **38 fichiers, 922 tests, tous passés** (194 s).
+- **`pnpm build` sans `.env.local`** (renommé le temps du build puis remis ; empreinte
+  SHA-256 identique avant et après ; aucune variable Supabase ni `NEXT_PUBLIC_*` dans
+  l'environnement du shell) : code 0, sans ligne « Environments », même tableau des routes.
+  Compteurs de lecture des tables de `citesavante_api` inchangés pendant ce build.
+- **`pnpm lint`** : code 0, 0 erreur, 0 avertissement.
+- **`pnpm exec prettier --check --ignore-unknown`** sur les 89 fichiers que git voit modifiés
+  ou nouveaux, `PROGRESS.md` compris (les 4 `.woff` et les 2 `.txt` sont ignorés par
+  Prettier) : code 0 ; aucun octet CR hors des `.woff`. Relancé après le dernier build et la
+  mise à jour de `PROGRESS.md` : code 0, aucun octet CR.
+- **`PG_DB=citesavante_corr3 bash scripts/valider-base.sh`** : « VALIDATION RÉUSSIE »,
+  7 migrations rejouées sans erreur, `seed.sql` et `seed_demo.sql` chargés, 6 fichiers,
+  466 vérifications, 0 échec (80 s) ; base jetable supprimée ensuite. Base `citesavante_api`
+  sans donnée de test (`clics_sortants` à 0, séquence à 5, 20 événements, 15 organisations).
+- **`pnpm build` avec `.env.local`, en dernier** (« Environments: .env.local ») : code 0 ;
+  `/`, `/_not-found`, `/charte`, `/icon.svg` en `○` ; `/agenda`, `/agenda/[slug]`,
+  `/agenda/[slug]/ics`, `/agenda/[slug]/opengraph-image`, `/echeances`, `/go/[type]/[id]`,
+  `/societes`, `/societes/[slug]`, `/societes/[slug]/opengraph-image` en `ƒ`. Compteurs de
+  lecture inchangés pendant ce build.
+- **Polices dans le traçage de ce dernier build**
+  (`.next/server/app/{agenda,societes}/[slug]/opengraph-image/route.js.nft.json`, 220
+  entrées chacun) : les quatre `assets/polices/*.woff`, aucun autre `.woff`, aucun chemin
+  `@fontsource`.
+- **`next-env.d.ts`** : ignoré par git (`.gitignore`, ligne 42), donc rien à comparer à git ;
+  empreinte inchangée après les deux builds, imports vers `.next/types` (et non
+  `.next/dev/types`).
+- **Dépôt** : `git status` ne liste que `src/`, `assets/polices/` et `PROGRESS.md` ; index
+  vide ; pas de `.next/dev` ; aucun fichier temporaire d'agent ; `package.json`,
+  `pnpm-lock.yaml` et `next.config.ts` inchangés.
+- **Dernier passage, après la correction des champs de date** (seuls `globals.css`,
+  `charte.test.ts` et ce fichier ont changé depuis) : `pnpm build` sans `.env.local`, puis avec
+  (empreinte identique), codes 0 ; le CSS compilé contient bien les quatre règles ;
+  `pnpm typecheck` et `pnpm lint`, codes 0 ; `pnpm test`, **38 fichiers, 923 tests, tous
+  passés** ; `valider-base.sh` sur une base jetable, supprimée ensuite : « VALIDATION
+  RÉUSSIE », 466 vérifications ; `citesavante_api` intacte (0 clic, séquence à 5,
+  20 événements).
+- **Repli de `NEXT_PUBLIC_SITE_URL`** : prouvé par `src/config/site.test.ts` seulement. Le build
+  sans la variable ne le montre pas, ses pages statiques `/` et `/charte` n'écrivant aucune URL
+  absolue (0 `citesavante.com`, 0 `localhost:3000`). À revoir au premier déploiement.
+
 ## Reste à faire
 
 - Phase 0 : vérification visuelle de `/` et `/charte` à 360 px et 1280 px par le
@@ -2240,7 +2907,31 @@ Le 14 octobre 2026, dans cet ordre, après les retouches :
   `*_rsc=*`, pour confirmer que les préchargements en 404 ont disparu.
 - Phase 7 : `robots.ts` doit interdire `/go` (section 15) ; d'ici là, chaque réponse
   de la passerelle porte déjà `X-Robots-Tag: noindex`.
-- Phases 3 à 7 et évolutions P1 (voir `docs/PROMPTS.md`).
+- Phase 3 : les « Points à vérifier sur données réelles » restés ouverts : JSON-LD à l'outil en
+  ligne, affiches et visuels de bannière.
+- Phase 7 : performance mobile d'au moins 90 (section 15) : première mesure locale **sous le
+  seuil** le 4 novembre (`/agenda` 79 à 89, fiche 71 à 75, `/echeances` 78 à 87), voir la
+  contre-vérification de la phase 3 ; remesurer sur le site déployé et corriger jusqu'au seuil.
+- Phase 3 : le porteur teste l'import du fichier .ics (Google Agenda sur ordinateur,
+  Android, iPhone : marche à suivre dans « À tester par le porteur ») et, APRÈS
+  DÉPLOIEMENT, l'aperçu WhatsApp d'une fiche d'événement ; il confirme « À valider par
+  le porteur (phase 3) » (rien de bloquant).
+- Phase 5 : la correction de la 404 d'une fiche dans `proxy.ts` vaut aussi pour
+  `/agenda/{slug}` (même limite de Next.js 16.3.6) ; revérifier ensuite sans
+  JavaScript une fiche d'événement inexistante, en attente et en majuscules.
+- Préchargements en 404 de la phase 2 : `/agenda`, `/echeances` et `/agenda/{slug}`
+  existent désormais ; restent `/referencer/…` et `/visibilite` (phase 5),
+  `/disciplines/{slug}` (phase 4) et les pages institutionnelles du pied de page.
+- Phase 6 (et dès la phase 5, car le formulaire public de la section 12.3 et l'espace
+  gestionnaire saisissent déjà l'heure) : limiter la saisie de l'heure de début à
+  00:00–23:59, Postgres admettant `24:00:00`, que le site traite comme absente (voir les
+  décisions de la phase 3).
+- Phase 7 : **`NEXT_PUBLIC_SITE_URL` obligatoire sur Vercel**, adresse de production : sans
+  elle, `envPublic()` refuse de s'exécuter et toute lecture de la base échoue.
+- Phase 7, après le premier déploiement : contrôle réel des images d'aperçu (« Points à
+  vérifier sur données réelles » de la phase 3, point 2), puis l'aperçu WhatsApp par le
+  porteur.
+- Phases 4 à 7 et évolutions P1 (voir `docs/PROMPTS.md`).
 
 ## Décisions
 
@@ -2253,6 +2944,8 @@ Le 14 octobre 2026, dans cet ordre, après les retouches :
   que des fichiers de police déposés à la main : versions figées, sous-ensemble latin
   déjà séparé par fichier, et les `.woff` (non `.woff2`) des mêmes paquets serviront en
   phase 3 aux images Open Graph générées par `satori` (qui ne lit pas le `.woff2`).
+  Complété en phase 3 : ces images lisent des copies de ces `.woff`, dans `assets/polices/`
+  (voir les décisions de la phase 3).
 - `@theme inline` (et non `@theme`) utilisé pour les jetons `--font-titre` /
   `--font-texte` : ces variables sont déjà déclarées par `next/font/local` sur `<html>`
   sous ce nom exact ; les redéclarer dans un `@theme` classique aurait produit une

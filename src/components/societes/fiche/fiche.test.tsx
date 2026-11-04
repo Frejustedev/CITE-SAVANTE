@@ -80,6 +80,8 @@ const evenement: EvenementResume = {
   gratuit: false,
   organisateurs: [{ role: "organisateur", id: "o1", slug: "demo-sbmi", sigle: "SBMI" }],
   prochaineEcheance: null,
+  disciplines: [{ id: "d1", slug: "sante", nom: "Santé et médecine" }],
+  miseEnAvant: false,
 };
 
 describe("EnTeteFiche", () => {

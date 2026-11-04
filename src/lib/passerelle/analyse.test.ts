@@ -68,6 +68,11 @@ const ficheSociete = (slug: string) => ({
   fiche: { rubrique: "societes", slug },
 });
 
+const ficheEvenement = (slug: string) => ({
+  chemin: `/agenda/${slug}`,
+  fiche: { rubrique: "agenda", slug },
+});
+
 describe("pageOrigine", () => {
   it("reconnaît une fiche d'organisation, dont le slug reste à vérifier", () => {
     expect(pageOrigine("/societes/sobeped")).toEqual(ficheSociete("sobeped"));
@@ -124,16 +129,20 @@ describe("pageOrigine", () => {
   });
 
   // Vérification complète de la phase 2 : ces formes étaient enregistrées
-  // telles quelles (jusqu'à 120 caractères libres). Aucune de ces pages
-  // n'existe encore ; elles seront admises avec la vérification de leurs
-  // slugs (phase 3 pour l'agenda, phase 4 pour les disciplines).
-  it.each([
-    "/agenda/congres-sobeped-2027",
-    "/agenda/jean-dupont-exemple-org-0100000000",
-    "/disciplines/sante",
-  ])("enregistre null pour une page de détail sans vérification d'existence : %s", (from) => {
-    expect(pageOrigine(from)).toBeNull();
+  // telles quelles (jusqu'à 120 caractères libres). Les fiches d'événement
+  // sont admises depuis la phase 3, avec la vérification de leur slug par la
+  // passerelle ; les disciplines le seront en phase 4.
+  it("enregistre null pour une page de détail sans vérification d'existence : /disciplines/sante", () => {
+    expect(pageOrigine("/disciplines/sante")).toBeNull();
   });
+
+  it.each(["congres-sobeped-2027", "jean-dupont-exemple-org-0100000000"])(
+    "reconnaît une fiche d'événement, dont le slug reste à vérifier : /agenda/%s",
+    (slug) => {
+      expect(pageOrigine(`/agenda/${slug}`)).toEqual(ficheEvenement(slug));
+      expect(pageOrigine(`/agenda/${slug}?vue=calendrier#dates`)).toEqual(ficheEvenement(slug));
+    },
+  );
 
   it.each([
     "/jean.dupont@exemple.org",

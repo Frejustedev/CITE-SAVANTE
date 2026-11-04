@@ -9,9 +9,11 @@
 // listé en tête de src/lib/supabase/service.ts. Les deux sont créés
 // paresseusement, seulement si la requête en a besoin.
 //
-// Page d'origine d'une fiche (`from=/societes/{slug}`) : vérifiée contre les
-// slugs des organisations publiées (`listerSlugsSocietesPubliees`, lecture
-// mise en cache de src/lib/requetes/, la même que la fiche).
+// Page d'origine d'une fiche (`from=/societes/{slug}` ou `/agenda/{slug}`) :
+// vérifiée contre les slugs des organisations publiées
+// (`listerSlugsSocietesPubliees`) ou des événements publiés
+// (`listerSlugsEvenementsPublies`), lectures mises en cache de
+// src/lib/requetes/, les mêmes que les fiches.
 //
 // `params` est une promesse depuis Next.js 15
 // (node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md).
@@ -21,6 +23,7 @@
 import type { NextRequest } from "next/server";
 
 import { traiterPasserelle } from "@/lib/passerelle/passerelle";
+import { listerSlugsEvenementsPublies } from "@/lib/requetes/evenements";
 import { listerSlugsSocietesPubliees } from "@/lib/requetes/societes";
 import { creerClientPublic } from "@/lib/supabase/public";
 import { creerClientService } from "@/lib/supabase/service";
@@ -36,7 +39,10 @@ async function repondre(requete: NextRequest, { params }: ContexteRoute): Promis
     clientLecture: creerClientPublic,
     clientEcriture: creerClientService,
     aujourdhui: aujourdhuiPortoNovo(),
-    slugsPublies: { societes: listerSlugsSocietesPubliees },
+    slugsPublies: {
+      societes: listerSlugsSocietesPubliees,
+      agenda: listerSlugsEvenementsPublies,
+    },
   });
 }
 

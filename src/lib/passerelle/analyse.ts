@@ -47,8 +47,8 @@ export function estTypeCible(valeur: unknown): valeur is TypeCiblePasserelle {
  * Page d'origine du clic : le CHEMIN seul (section 10.1 : « chemin de la
  * page d'origine »), sans paramètres ni fragment, DÉCODÉ, et seulement s'il
  * passe `cheminOrigineValide` PUIS est une page publique reconnue
- * (`lirePageOrigine` : `/societes`, `/agenda`… ou `/societes/{slug}`) ;
- * sinon `null`. Retirer la chaîne de requête et n'admettre que des pages
+ * (`lirePageOrigine` : `/societes`, `/agenda`… ou `/societes/{slug}`,
+ * `/agenda/{slug}`) ; sinon `null`. Retirer la chaîne de requête et n'admettre que des pages
  * connues évite d'enregistrer une saisie libre du visiteur (`/recherche?q=…`,
  * ou un lien forgé `?from=/jean.dupont@exemple.org`) : aucune donnée
  * personnelle dans les clics (section 15).

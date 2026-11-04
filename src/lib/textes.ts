@@ -94,3 +94,17 @@ export const typeEmplacementLabels: Record<TypeEmplacement, string> = {
   evenement_en_avant: "Événement mis en avant",
   lettre: "Lettre",
 };
+
+/**
+ * Mentions de l'agenda (spécifications, sections 7 et 8.3) : un événement
+ * mis en avant par un emplacement `evenement_en_avant` porte « Mis en
+ * avant » ; une bannière `banniere_agenda` est signalée « Publicité ».
+ */
+export const MENTION_MIS_EN_AVANT = "Mis en avant";
+export const MENTION_PUBLICITE = "Publicité";
+
+/** Libellés des deux vues de l'agenda (`?vue=`). */
+export const vueAgendaLabels: Record<"liste" | "calendrier", string> = {
+  liste: "Liste",
+  calendrier: "Calendrier",
+};

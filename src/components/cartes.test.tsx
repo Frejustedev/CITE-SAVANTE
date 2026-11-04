@@ -127,6 +127,8 @@ describe("CarteEvenement", () => {
       libelle: null,
       dateLimite: "2027-02-01",
     },
+    disciplines: [{ id: "d1", slug: "sante", nom: "Santé et médecine" }],
+    miseEnAvant: false,
   };
 
   it("un seul lien, vers la fiche de l'événement", () => {
@@ -190,5 +192,57 @@ describe("CarteEvenement", () => {
         />,
       ),
     ).toContain("Cotonou et en ligne");
+  });
+});
+
+describe("CarteEvenement : phase 3", () => {
+  const base: EvenementResume = {
+    id: "e2",
+    slug: "demo-congres-pediatrie-cotonou",
+    titre: "[DÉMO] Congrès de pédiatrie",
+    type: "congres",
+    dateDebut: "2027-03-29",
+    dateFin: "2027-03-31",
+    heureDebut: null,
+    modalite: "presentiel",
+    lieuNom: null,
+    ville: "Cotonou",
+    gratuit: false,
+    organisateurs: [{ role: "organisateur", id: "o1", slug: "demo-sobeped", sigle: "SOBEPED" }],
+    prochaineEcheance: {
+      id: "x2",
+      type: "inscription_tarif_preferentiel",
+      libelle: "  Inscription anticipée ",
+      dateLimite: "2027-03-01",
+    },
+    disciplines: [{ id: "d1", slug: "sante", nom: "Santé et médecine" }],
+    miseEnAvant: true,
+  };
+
+  it("mention « Mis en avant » (texte, pas un lien) et badge de type", () => {
+    const html = renderToStaticMarkup(<CarteEvenement evenement={base} aujourdhui="2027-02-01" />);
+    expect(html).toContain("Mis en avant");
+    expect(compter(html, /<a /g)).toBe(1);
+    expect(html).toMatch(/<span class="[^"]*bg-or-clair[^"]*text-bordeaux[^"]*">Congrès<\/span>/);
+  });
+
+  it("sans mise en avant : aucune mention", () => {
+    const html = renderToStaticMarkup(
+      <CarteEvenement evenement={{ ...base, miseEnAvant: false }} aujourdhui="2027-02-01" />,
+    );
+    expect(html).not.toContain("Mis en avant");
+  });
+
+  it("prochaine échéance : libellé libre nettoyé, badge urgent à 7 jours", () => {
+    const html = renderToStaticMarkup(<CarteEvenement evenement={base} aujourdhui="2027-02-25" />);
+    expect(html).toContain("Inscription anticipée : 1er mars 2027");
+    expect(html).toContain("Clôture dans 4 jours");
+  });
+
+  it("lieu « Lieu à préciser » sans lieu ni ville", () => {
+    const html = renderToStaticMarkup(
+      <CarteEvenement evenement={{ ...base, ville: null }} aujourdhui="2027-02-01" />,
+    );
+    expect(html).toContain("Lieu à préciser");
   });
 });

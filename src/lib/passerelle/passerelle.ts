@@ -20,8 +20,8 @@
 // atteindre le serveur pour être compté).
 //
 // Page d'origine (`page_origine`) : une page fixe reconnue (`/societes`,
-// `/agenda`…) est enregistrée telle quelle ; une fiche (`/societes/{slug}`)
-// seulement si son slug figure parmi les fiches publiées
+// `/agenda`…) est enregistrée telle quelle ; une fiche (`/societes/{slug}`,
+// `/agenda/{slug}`) seulement si son slug figure parmi les fiches publiées
 // (`slugsPublies`, lecture mise en cache), sinon `null`. Vérification faite
 // pour les seuls clics comptés ; si elle échoue, `null` et la redirection
 // part quand même.

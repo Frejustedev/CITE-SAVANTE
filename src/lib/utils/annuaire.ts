@@ -62,7 +62,12 @@ const CATEGORIES: readonly string[] = Constants.public.Enums.categorie_organisat
 // Caractères de contrôle et invisibles retirés du texte recherché.
 const CARACTERES_PARASITES = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2069]/g;
 
-function normaliserRecherche(q: string | null | undefined): string | null {
+/**
+ * Texte recherché saisi par le visiteur, nettoyé (caractères invisibles et
+ * de contrôle retirés, espaces normalisés) : `null` sous 2 caractères, coupé
+ * à 100. Partagé par l'annuaire et l'agenda (`src/lib/utils/agenda.ts`).
+ */
+export function normaliserRecherche(q: string | null | undefined): string | null {
   if (typeof q !== "string") return null;
   const propre = q.replace(CARACTERES_PARASITES, " ").replace(/\s+/g, " ").trim();
   const caracteres = Array.from(propre);

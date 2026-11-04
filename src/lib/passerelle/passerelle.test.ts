@@ -260,6 +260,9 @@ type Scenario = {
 /** Slugs des fiches d'organisation publiées (pages d'origine admises), fictifs. */
 const SLUGS_SOCIETES_PUBLIEES: ReadonlySet<string> = new Set(["sobeped", "demo-sbmi"]);
 
+/** Slugs des fiches d'événement publiées (pages d'origine admises), fictifs. */
+const SLUGS_EVENEMENTS_PUBLIES: ReadonlySet<string> = new Set(["demo-congres-pediatrie-cotonou"]);
+
 /** Exécute la passerelle sur `chemin` (« /go/{type}/{id}?… ») avec un faux client. */
 async function executer({ chemin, methode = "GET", entetes, options, dependances }: Scenario) {
   const faux = creerFauxClient({ tables: TABLES, ...options });
@@ -267,6 +270,7 @@ async function executer({ chemin, methode = "GET", entetes, options, dependances
   const clientLecture = vi.fn(() => faux.client);
   const clientEcriture = vi.fn(() => faux.client);
   const slugsSocietes = vi.fn(async () => SLUGS_SOCIETES_PUBLIEES);
+  const slugsEvenements = vi.fn(async () => SLUGS_EVENEMENTS_PUBLIES);
   const url = new URL(chemin, "https://citesavante.com");
   const [, , type = "", id = ""] = url.pathname.split("/");
   const reponse = await traiterPasserelle(
@@ -276,12 +280,20 @@ async function executer({ chemin, methode = "GET", entetes, options, dependances
       clientLecture,
       clientEcriture,
       aujourdhui: AUJOURDHUI,
-      slugsPublies: { societes: slugsSocietes },
+      slugsPublies: { societes: slugsSocietes, agenda: slugsEvenements },
       journaliser: (message) => journal.push(message),
       ...dependances,
     },
   );
-  return { reponse, faux, journal, clientLecture, clientEcriture, slugsSocietes };
+  return {
+    reponse,
+    faux,
+    journal,
+    clientLecture,
+    clientEcriture,
+    slugsSocietes,
+    slugsEvenements,
+  };
 }
 
 function attendreEntetesPasserelle(reponse: Response) {
@@ -477,7 +489,10 @@ describe("emplacement publicitaire", () => {
         clientLecture: () => ignorerFiltres,
         clientEcriture: () => faux.client,
         aujourdhui: AUJOURDHUI,
-        slugsPublies: { societes: async () => SLUGS_SOCIETES_PUBLIEES },
+        slugsPublies: {
+          societes: async () => SLUGS_SOCIETES_PUBLIEES,
+          agenda: async () => SLUGS_EVENEMENTS_PUBLIES,
+        },
       },
     );
     expect(reponse.status).toBe(404);
@@ -527,7 +542,10 @@ describe("cible absente ou non publiée → 404, aucun clic", () => {
         clientLecture: () => menteur,
         clientEcriture: () => faux.client,
         aujourdhui: AUJOURDHUI,
-        slugsPublies: { societes: async () => SLUGS_SOCIETES_PUBLIEES },
+        slugsPublies: {
+          societes: async () => SLUGS_SOCIETES_PUBLIEES,
+          agenda: async () => SLUGS_EVENEMENTS_PUBLIES,
+        },
       },
     );
     expect(reponse.status).toBe(404);
@@ -670,16 +688,40 @@ describe("page d'origine d'une fiche : slug publié exigé", () => {
     expect(journal).toEqual([]);
   });
 
-  it.each(["/agenda/jean-dupont-exemple-org-0100000000", "/disciplines/sante"])(
-    "page de détail encore sans vérification (%s) → null, sans lecture",
-    async (from) => {
-      const { faux, slugsSocietes } = await executer({
-        chemin: `/go/societe/${S_PUBLIEE}?vers=site&from=${from}`,
-      });
-      expect(faux.insertions[0].ligne.page_origine).toBeNull();
-      expect(slugsSocietes).not.toHaveBeenCalled();
-    },
-  );
+  it("page de détail encore sans vérification (/disciplines/sante) → null, sans lecture", async () => {
+    const { faux, slugsSocietes, slugsEvenements } = await executer({
+      chemin: `/go/societe/${S_PUBLIEE}?vers=site&from=/disciplines/sante`,
+    });
+    expect(faux.insertions[0].ligne.page_origine).toBeNull();
+    expect(slugsSocietes).not.toHaveBeenCalled();
+    expect(slugsEvenements).not.toHaveBeenCalled();
+  });
+
+  // Phase 3 : la fiche événement porte des liens /go (« S'inscrire », « Site
+  // de l'événement ») ; son chemin est admis si le slug est publié.
+  it("fiche événement publiée : chemin enregistré, une seule lecture des slugs d'événements", async () => {
+    const { reponse, faux, slugsSocietes, slugsEvenements } = await executer({
+      chemin: `/go/evenement/${E_PUBLIE}?vers=inscription&from=/agenda/demo-congres-pediatrie-cotonou`,
+    });
+    expect(reponse.status).toBe(302);
+    expect(faux.insertions[0].ligne.page_origine).toBe("/agenda/demo-congres-pediatrie-cotonou");
+    expect(slugsEvenements).toHaveBeenCalledTimes(1);
+    expect(slugsSocietes).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["slug inventé", "/agenda/n-importe-quoi"],
+    ["nom en forme de slug", "/agenda/jean-dupont-exemple-org-0100000000"],
+    ["slug d'organisation sous /agenda", "/agenda/demo-sbmi"],
+  ])("fiche événement : %s → page_origine = null", async (_cas, from) => {
+    const { reponse, faux, journal } = await executer({
+      chemin: `/go/evenement/${E_PUBLIE}?vers=inscription&from=${from}`,
+    });
+    expect(reponse.status).toBe(302);
+    expect(faux.insertions).toHaveLength(1);
+    expect(faux.insertions[0].ligne.page_origine).toBeNull();
+    expect(journal).toEqual([]);
+  });
 
   it("page fixe (/societes) : enregistrée sans lecture des slugs", async () => {
     const { faux, slugsSocietes } = await executer({
@@ -697,6 +739,7 @@ describe("page d'origine d'une fiche : slug publié exigé", () => {
           societes: async () => {
             throw new Error("Lecture des sociétés publiées impossible : panne");
           },
+          agenda: async () => SLUGS_EVENEMENTS_PUBLIES,
         },
       },
     });

@@ -20,6 +20,22 @@ describe("charte graphique", () => {
     expect(jetonsCss).toEqual(jetonsTs);
   });
 
+  it("champs de date : le bleu système de Chromium reste recouvert par les jetons", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/app/globals.css"), "utf8");
+
+    for (const segment of ["day", "month", "year"]) {
+      expect(css).toContain(
+        `input[type="date"]::-webkit-datetime-edit-${segment}-field:focus-within`,
+      );
+    }
+    expect(css).toMatch(
+      /::-webkit-datetime-edit-year-field:focus-within \{\s*background-color: var\(--color-or-clair\);\s*color: var\(--color-encre\);/,
+    );
+    expect(css).toMatch(
+      /::-webkit-calendar-picker-indicator \{\s*outline-color: var\(--color-or\);/,
+    );
+  });
+
   it("badge « urgent » : texte encre sur fond or, rapport ≈ 5,66:1 (conforme AA)", () => {
     const couple = couplesUtilises.find(
       (candidat) =>

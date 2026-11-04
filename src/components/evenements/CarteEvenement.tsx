@@ -1,9 +1,10 @@
 import Link from "next/link";
 
+import { BadgeTypeEvenement } from "@/components/evenements/BadgeTypeEvenement";
 import { Badge } from "@/components/mise-en-page/Badge";
 import { Carte } from "@/components/mise-en-page/Carte";
-import { PictoCalendrier, PictoEnLigne, PictoLieu } from "@/components/pictos";
-import { modaliteEvenementLabels, typeEcheanceLabels, typeEvenementLabels } from "@/lib/textes";
+import { PictoCalendrier, PictoEnLigne, PictoFanion, PictoLieu } from "@/components/pictos";
+import { MENTION_MIS_EN_AVANT } from "@/lib/textes";
 import { cx } from "@/lib/utils/classes";
 import {
   aujourdhuiPortoNovo,
@@ -13,7 +14,12 @@ import {
   formaterPeriode,
   joursRestants,
 } from "@/lib/utils/dates";
-import { siglesOrganisateurs, type EvenementResume } from "@/lib/utils/evenements";
+import {
+  libelleEcheance,
+  siglesOrganisateurs,
+  texteLieu,
+  type EvenementResume,
+} from "@/lib/utils/evenements";
 
 export type CarteEvenementProps = {
   evenement: EvenementResume;
@@ -32,29 +38,15 @@ export type CarteEvenementProps = {
 
 const listeFrancaise = new Intl.ListFormat("fr", { style: "long", type: "conjunction" });
 
-/** Lieu affiché : « En ligne », « Lieu, Ville », « Ville et en ligne »… */
-function texteLieu(evenement: EvenementResume): string {
-  const lieu = [evenement.lieuNom, evenement.ville]
-    .map((partie) => partie?.trim())
-    .filter(Boolean)
-    .join(", ");
-  switch (evenement.modalite) {
-    case "en_ligne":
-      return modaliteEvenementLabels.en_ligne;
-    case "hybride":
-      return lieu ? `${lieu} et en ligne` : "En présentiel et en ligne";
-    default:
-      return lieu || "Lieu à préciser";
-  }
-}
-
 /**
- * Carte d'un événement (version minimale de la phase 2, enrichie en phase 3) :
- * type, titre, période, lieu ou « En ligne », organisateurs (sigles des
- * organisatrices et co-organisatrices), prochaine échéance avec un badge si
- * elle tombe dans 7 jours ou moins. Toute la carte mène à `/agenda/{slug}`
- * par un seul lien (titre étendu à la carte) ; les organisateurs sont du
- * texte, pour ne pas imbriquer de liens.
+ * Carte d'un événement (agenda, fiche organisation, suggestions, accueil ;
+ * section 8.3) : badge de type, mention « Mis en avant » (fanion or et texte
+ * bordeaux) si `evenement.miseEnAvant`, titre, période, lieu ou « En ligne »
+ * (`texteLieu`), organisateurs (sigles des organisatrices et
+ * co-organisatrices), prochaine échéance (libellé, date) avec un badge
+ * « Clôture … » or si elle tombe dans 7 jours ou moins. Toute la carte mène
+ * à `/agenda/{slug}` par un seul lien (titre étendu à la carte) ; les
+ * organisateurs et la mention sont du texte, pour ne pas imbriquer de liens.
  */
 export function CarteEvenement({
   evenement,
@@ -77,8 +69,14 @@ export function CarteEvenement({
         className,
       )}
     >
-      <div>
-        <Badge>{typeEvenementLabels[evenement.type]}</Badge>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <BadgeTypeEvenement type={evenement.type} />
+        {evenement.miseEnAvant ? (
+          <span className="petites-capitales inline-flex items-center gap-1 text-base text-bordeaux">
+            <PictoFanion taille={18} className="shrink-0 text-or" />
+            {MENTION_MIS_EN_AVANT}
+          </span>
+        ) : null}
       </div>
 
       <Titre className="mt-3 font-titre text-lg leading-tight font-medium">
@@ -119,7 +117,7 @@ export function CarteEvenement({
           <span className="petites-capitales block text-bordeaux">Prochaine échéance</span>
           <span className="tabular-nums">
             {/* Espace insécable avant « : », comme partout sur le site. */}
-            {`${echeance.libelle ?? typeEcheanceLabels[echeance.type]} : `}
+            {`${libelleEcheance(echeance)} : `}
             {formaterDate(echeance.dateLimite)}
           </span>
           {urgente ? (

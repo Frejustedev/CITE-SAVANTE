@@ -142,12 +142,12 @@ const PAGES_ORIGINE_FIXES: readonly string[] = [
  * src/lib/passerelle/passerelle.ts), sinon `page_origine` vaut `null`. Sans
  * cette vérification, un lien forgé ferait enregistrer jusqu'à 120
  * caractères libres en forme de slug (vérification complète de la phase 2).
- * Seules les fiches d'organisation existent en phase 2. À compléter quand la
- * page de détail existera et portera un lien `/go`, avec la liste de ses
- * slugs publiés : `agenda` en phase 3, `disciplines` en phase 4. D'ici là,
- * `/agenda/{slug}` et `/disciplines/{slug}` donnent `null`.
+ * Fiches d'organisation (phase 2) et fiches d'événement (phase 3, slugs
+ * vérifiés par `listerSlugsEvenementsPublies`). À compléter quand la page de
+ * détail d'une discipline existera et portera un lien `/go` (phase 4), avec
+ * la liste de ses slugs ; d'ici là, `/disciplines/{slug}` donne `null`.
  */
-export const RUBRIQUES_ORIGINE_A_SLUG = ["societes"] as const;
+export const RUBRIQUES_ORIGINE_A_SLUG = ["societes", "agenda"] as const;
 
 /** Rubrique dont une fiche peut être une page d'origine (`/{rubrique}/{slug}`). */
 export type RubriqueOrigine = (typeof RUBRIQUES_ORIGINE_A_SLUG)[number];
@@ -168,8 +168,8 @@ function estRubriqueOrigine(valeur: string): valeur is RubriqueOrigine {
 /**
  * Reconnaît une page publique du site dans `chemin` (déjà DÉCODÉ, sans
  * paramètres ni fragment) : `/`, `/societes`, `/agenda`, `/echeances`,
- * `/recherche` (`fiche: null`), ou `/societes/{slug}` (`fiche` : slug à
- * vérifier par l'appelant). Casse exacte, aucune barre finale (Next.js la
+ * `/recherche` (`fiche: null`), ou `/societes/{slug}` et `/agenda/{slug}`
+ * (`fiche` : slug à vérifier par l'appelant). Casse exacte, aucune barre finale (Next.js la
  * redirige), slug au format du site (`estSlugValide`). Toute autre valeur
  * (texte libre, adresse électronique, `/espace/…`, rubrique sans
  * vérification d'existence) donne `null` : la passerelle n'enregistre jamais
